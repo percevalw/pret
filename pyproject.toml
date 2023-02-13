@@ -1,0 +1,18 @@
+[project]
+name = "pret"
+description = "Python framework to build reactive web apps with seamless server-client interaction"
+authors = [
+    { name = "Perceval Wajsburt", email = "perceval.wajsburt@gmail.com" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+urls.homepage = "https://github.com/perceval/pret/"
+urls.repository = "https://github.com/perceval/pret/"
+dynamic = ["version"]
+requires-python = ">3.7.6,<4.0,!=3.8.1"
+dependencies = [
+    "ipykernel",
+    "dill",
+    "quart",
+    "typer"
+]
