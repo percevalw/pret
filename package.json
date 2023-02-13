@@ -1,0 +1,60 @@
+{
+  "name": "pret",
+  "main": "client/index.tsx",
+  "scripts": {},
+  "peerDependencies": {
+    "@jupyterlab/application": "",
+    "@jupyterlab/apputils": "",
+    "@jupyterlab/docregistry": "",
+    "@jupyterlab/logconsole": "",
+    "@jupyterlab/mainmenu": "",
+    "@jupyterlab/notebook": "",
+    "@jupyterlab/outputarea": "",
+    "@jupyterlab/rendermime": "",
+    "@jupyterlab/services": "",
+    "@jupyterlab/settingregistry": "",
+    "@lumino/algorithm": "",
+    "@lumino/coreutils": "",
+    "@lumino/disposable": "",
+    "@lumino/properties": "",
+    "@lumino/signaling": "",
+    "@lumino/widgets": "",
+    "react": ">=17.0.2",
+    "react-dom": ">=17.0.2"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.10.5",
+    "@emotion/styled": "^11.10.5",
+    "@mui/material": "^5.11.8",
+    "css-loader": "^6.7.3",
+    "pyodide": "^0.22.1",
+    "style-loader": "^3.3.1",
+    "use-sync-external-store": "^1.2.0"
+  },
+  "devDependencies": {
+    "@jupyterlab/builder": "^3.6.0",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.5.1",
+    "react": ">=17.0.2",
+    "react-dom": ">=17.0.2",
+    "ts-loader": "^9.4.2",
+    "webpack": "^5.83.1"
+  },
+  "jupyterlab": {
+    "extension": "client/jupyter/plugin",
+    "schemaDir": "client/jupyter/schema",
+    "outputDir": "pret/js-extension"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

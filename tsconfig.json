@@ -1,0 +1,21 @@
+{
+  "include": ["client", "pret"],
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es5",
+    "lib": [
+      "es2020",
+      "dom",
+      "es2021"
+    ],
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "rootDirs": ["client"],
+    "allowJs": true,
+    "strict": false,
+    "allowSyntheticDefaultImports": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "downlevelIteration": true
+  }
+}
