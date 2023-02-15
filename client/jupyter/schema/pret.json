@@ -1,0 +1,7 @@
+{
+  "name": "pret",
+  "description": "Python framework to build reactive web apps with seamless server-client interaction",
+  "additionalProperties": false,
+  "properties": {},
+  "type": "object"
+}

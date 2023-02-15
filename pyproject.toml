@@ -16,3 +16,64 @@ dependencies = [
     "quart",
     "typer"
 ]
+
+# ----- CLI configuration -----
+[project.scripts]
+pret = "pret.cli:app"
+
+# ----- Development configuration -----
+[project.optional-dependencies]
+dev = [
+    "hatchling",
+    "hatch-jupyter-builder",
+]
+
+# ----- Linting & Testing -----
+[tool.ruff]
+fix = true
+exclude = [
+    ".git",
+    "__pycache__",
+    "__init__.py",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".venv",
+    "build",
+]
+ignore = []
+line-length = 88
+select = [
+    "E",
+    "F",
+    "W",
+    "I001"
+]
+fixable = ["E", "F", "W", "I"]
+
+# ----- Build configuration -----
+[tool.hatch.version]
+path = "pret/__init__.py"
+
+[build-system]
+requires = ["hatchling", "jupyterlab<4.0.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.hooks.jupyter-builder]
+dependencies = ["hatch-jupyter-builder"]
+build-function = "hatch_jupyter_builder.npm_builder"
+install-pre-commit-hook = true
+optional-editable-build = true
+build-kwargs = { "build_cmd" = "build", "npm" = ["jlpm"] }
+editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
+
+
+[tool.hatch.build]
+artifact = [
+    "**/js-extension/",
+    "**/js-base/",
+]
+
+[tool.hatch.build.targets.wheel]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"pret/js-extension" = "share/jupyter/labextensions/pret"
