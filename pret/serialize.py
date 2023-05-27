@@ -142,11 +142,18 @@ def globalvars(func, recurse=True, builtin=False):
     return dict((name, globs[name]) for name in func if name in globs)
 
 
-def _locate_function(obj, pickler=None):
+def is_in_pickled_modules(name, modules):
+    return (
+        (name + ".").startswith(prefix + ".") for prefix in ["__main__", None, *modules]
+    )
+
+
+def _locate_function(obj, pickler: "PretPickler" = None):
     """Adapter for dill._dill._locate_function"""
     module_name = getattr(obj, "__module__", None)
+
     if (
-        module_name in ["__main__", None, *pickler.pickled_modules]
+        is_in_pickled_modules(module_name, pickler.pickled_modules)
         or pickler
         and is_dill(pickler, child=False)
         and pickler._session
@@ -356,7 +363,7 @@ def save_module_dict(pickler, obj):
         "__name__" in obj
         and type(obj["__name__"]) is str
         and obj is getattr(_import_module(obj["__name__"], True), "__dict__", None)
-        and obj["__name__"] not in pickler.pickled_modules
+        and is_in_pickled_modules(obj["__name__"], pickler.pickled_modules)
     ):
         logger.trace(pickler, "D4: %s", _repr_dict(obj))  # obj
         pickler.write(bytes("c%s\n__dict__\n" % obj["__name__"], "UTF-8"))
@@ -535,7 +542,10 @@ def save_module(pickler, obj):
         obj.__name__ not in ("builtins", "dill", "dill._dill")
         and not builtin_mod
         or is_dill(pickler, child=True)
-        and (obj is pickler._main or obj.__name__ in pickler.pickled_modules)
+        and (
+            obj is pickler._main
+            or is_in_pickled_modules(obj.__name__, pickler.pickled_modules)
+        )
     ):
         module_dict = obj.__dict__.copy()
         for item in (*singletontypes, "__builtins__", "__loader__"):
