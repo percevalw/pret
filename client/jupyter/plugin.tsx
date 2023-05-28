@@ -23,6 +23,8 @@ import {CommandRegistry} from "@lumino/commands"; /* @ts-ignore */
 import PretJupyterHandler from "./manager";
 import {PretViewWidget} from "./widget";
 
+import "./keep-hidden-cell-output";
+
 const MIMETYPE = 'application/vnd.pret+json';
 // // export const notebookIcon = new LabIcon({name: 'ui-components:pret', svgstr: pretSvgstr});
 
@@ -98,14 +100,6 @@ type PretClonedAreaOptions = {
      */
     index?: number;
 }
-
-export type PretViewData = {
-    serialized: string,
-    bundled_modules: any,
-    unpickler_id: string,
-    chunk_idx: number,
-};
-
 /**
  * A widget hosting a cloned output area.
  */
