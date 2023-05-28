@@ -51,7 +51,8 @@
   "jupyterlab": {
     "extension": "client/jupyter/plugin",
     "schemaDir": "client/jupyter/schema",
-    "outputDir": "pret/js-extension"
+    "outputDir": "pret/js-extension",
+    "webpackConfig": "./webpack/webpack.jupyter.js"
   },
   "prettier": {},
   "browserslist": {
