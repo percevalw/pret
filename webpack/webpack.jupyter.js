@@ -9,6 +9,13 @@ module.exports = {
                 exclude: /node_modules/,
             },
             {
+                test: /\.py$/,
+                type: 'asset/inline',
+                generator: {
+                    dataUrl: content => content.toString(),
+                },
+            },
+            {
                 test: /\.m?js/,
                 resolve: {
                     fullySpecified: false
@@ -17,7 +24,7 @@ module.exports = {
         ],
     },
     resolve: {
-        extensions: ['.tsx', '.ts', '.js', '.css'],
+        extensions: ['.tsx', '.ts', '.js', '.py', '.css'],
     },
     optimization: {
         usedExports: true,
