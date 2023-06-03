@@ -8,7 +8,9 @@ settings = {
             "pret.bridge",
             "pret.manager",
             "pret.stubs",
+            "pret.stubs.*",
         ],
         'recurse': True,
+        'save_code_as_source': "auto",
     }
 }

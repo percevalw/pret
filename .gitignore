@@ -152,8 +152,8 @@ package-lock.json
 **/coverage/
 
 # Compiled JS
-*.js
-*.js.map
+#*.js
+#*.js.map
 
 
 .vscode

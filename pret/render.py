@@ -69,8 +69,10 @@ def component(fn):
     @functools.wraps(fn)
     @pickle_as(create_fn)
     def wrapped(*children, detach=False, **props):
+        def render():
+            return create_fn(*children, **props)
         return Renderable(
-            lambda: create_fn(*children, **props),
+            render,
             detach=detach,
         )
 
