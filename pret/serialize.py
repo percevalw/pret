@@ -122,7 +122,7 @@ def save_code_as_source(pickler, obj):
     if not (
         pickler.save_code_as_source is True
         or pickler.save_code_as_source == "auto"
-        and sys.version_info <= (3, 8)
+        and sys.version_info < (3, 11)
     ):
         save_code(pickler, obj)
         return
