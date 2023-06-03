@@ -26,9 +26,7 @@ import {PretViewData} from "./widget";
 
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 
-const UNPACK_PY = `
-print("Loading unpack")
-`;
+import DESERIALIZE_PY from "../deserialize.py";
 
 
 export default class PretJupyterHandler {
@@ -75,7 +73,7 @@ export default class PretJupyterHandler {
             const micropip = pyodide.pyimport("micropip");
             await micropip.install("dill");
             window.React = React;
-            this.unpack = await pyodide.runPythonAsync(UNPACK_PY);
+            this.unpack = await pyodide.runPythonAsync(DESERIALIZE_PY);
         }).then(
             () => {
                 if (this.comm) {
