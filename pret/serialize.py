@@ -140,10 +140,7 @@ class GlobalRef:
     def __init__(self, module, name):
         self.module = module
         self.name = name
-
-    @property
-    def __module__(self):
-        return self.module.__name__
+        self.__module__ = module.__name__
 
     def __reduce__(self):
         # str is interpreted by pickle as save global, which is exactly what we want
@@ -155,6 +152,9 @@ class GlobalRef:
 
     def __repr__(self):
         return f"GlobalRef({self.__module__}.{self.name})"
+
+    def __str__(self):
+        return f"{self.__module__}.{self.name}"
 
 
 def pickle_as(base_version: Any, pickled_version: Any = None):
