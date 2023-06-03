@@ -52,11 +52,18 @@ def create_module_with_dict(name, module_dict, doc=None, file=None):
     return module.__dict__
 
 
+def create_code_from_source(source_code):
+    var_dict = {}
+    exec(source_code, var_dict, var_dict)
+    return var_dict["_fn_"].__code__
+
+
 create_module_with_dict(
     "pret.serialize",
     {
         "create_module_with_dict": create_module_with_dict,
         "create_module": create_module,
+        "create_code_from_source": create_code_from_source,
     },
 )
 

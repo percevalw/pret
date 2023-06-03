@@ -8,6 +8,8 @@ from inspect import iscode, isfunction, ismethod
 from pickle import DICT, EMPTY_DICT, MARK
 from typing import Any
 from weakref import WeakKeyDictionary, WeakSet, WeakValueDictionary
+import fnmatch
+import textwrap
 
 from dill._dill import (
     CodeType,
@@ -37,9 +39,101 @@ from dill._dill import (
     is_dill,
     logger,
     singletontypes,
+    save_code,
 )
 from dill.detect import getmodule, nestedglobals
+
 from pret.settings import settings
+import ast
+
+import inspect
+
+
+def reconstruct_arguments_str(code):
+    arg_details = inspect.getargs(code)
+    sig = []
+    if len(arg_details.args):
+        sig.append(", ".join(arg_details.args))
+    keyword_only_args = getattr(arg_details, "kwonlyargs", None)
+    if keyword_only_args:
+        sig.append("*, " + ", ".join(keyword_only_args))
+    if arg_details.varargs:
+        sig.append("*" + arg_details.varargs)
+    if arg_details.varkw:
+        sig.append("**" + arg_details.varkw)
+    return ", ".join(sig)
+
+
+def get_source_code(code):
+    if code.co_name == "<lambda>":
+        try:
+            # from decompyle3.main import decompile
+            # decompile(code, out=buffer)
+            # buffer = StringIO()
+            # lines = buffer.getvalue().splitlines()
+            # lines = lines[[line.startswith("#") for line in lines].index(False):]
+            # function_body = "\n".join(lines)
+
+            from pycdc import decompyle
+            import marshal
+
+            function_body = decompyle(marshal.dumps(code))
+        except:
+            raise Exception(
+                f"Cannot obtain source from {code}.\n"
+                f"lambda functions have partial support for python < 3.11.\n"
+                f"Ensure you have installed `pycdc` to enable code decompilation."
+            )
+        function_name = "_fn_"
+        # TODO: handle async lambdas ?
+        def_str = "def"
+    else:
+        source_code = inspect.getsource(code)
+        tree = ast.parse(textwrap.dedent(source_code))
+        body = tree.body[0]
+        lines = source_code.splitlines()
+        function_body = textwrap.dedent("\n".join(lines[body.body[0].lineno - 1 :]))
+        def_str = "async def" if isinstance(body, ast.AsyncFunctionDef) else "def"
+        function_name = body.name
+
+    function_code = (
+        f"{def_str} {function_name}({reconstruct_arguments_str(code)}):\n"
+        + f"{textwrap.indent(function_body, '  ')}\n"
+    )
+
+    # Simulate the existence of free variables if there are closures
+    # to force Python to insert the right bytecode instructions for loading them.
+    if code.co_freevars:
+        free_vars = " = ".join(code.co_freevars) + " = None"
+        factory_code = (
+            f"def _factory_():\n"
+            + (f"  {free_vars}\n" if free_vars else "")
+            + f"{textwrap.indent(function_code, '  ')}\n"
+            f"  return {function_name}\n"
+            f"_fn_ = _factory_()\n"
+        )
+    else:
+        factory_code = f"{function_code}\n" f"_fn_ = {function_name}\n"
+
+    return factory_code
+
+
+def save_code_as_source(pickler, obj):
+    if not (
+        pickler.save_code_as_source is True
+        or pickler.save_code_as_source == "auto"
+        and sys.version_info <= (3, 8)
+    ):
+        save_code(pickler, obj)
+        return
+
+    pickler.save_reduce(create_code_from_source, (get_source_code(obj),), obj=obj)
+
+
+def create_code_from_source(source_code):
+    var_dict = {}
+    exec(source_code, var_dict, var_dict)
+    return var_dict["_fn_"].__code__
 
 
 class GlobalRef:
@@ -142,18 +236,13 @@ def globalvars(func, recurse=True, builtin=False):
     return dict((name, globs[name]) for name in func if name in globs)
 
 
-def is_in_pickled_modules(name, modules):
-    return (
-        (name + ".").startswith(prefix + ".") for prefix in ["__main__", None, *modules]
-    )
-
-
-def _locate_function(obj, pickler: "PretPickler" = None):
+def _locate_function(obj, pickler=None):
     """Adapter for dill._dill._locate_function"""
     module_name = getattr(obj, "__module__", None)
 
     if (
-        is_in_pickled_modules(module_name, pickler.pickled_modules)
+        module_name is None
+        or fnmatch.filter(["__main__", *pickler.pickled_modules], module_name)
         or pickler
         and is_dill(pickler, child=False)
         and pickler._session
@@ -363,7 +452,7 @@ def save_module_dict(pickler, obj):
         "__name__" in obj
         and type(obj["__name__"]) is str
         and obj is getattr(_import_module(obj["__name__"], True), "__dict__", None)
-        and is_in_pickled_modules(obj["__name__"], pickler.pickled_modules)
+        and not fnmatch.filter(pickler.pickled_modules, obj["__name__"])
     ):
         logger.trace(pickler, "D4: %s", _repr_dict(obj))  # obj
         pickler.write(bytes("c%s\n__dict__\n" % obj["__name__"], "UTF-8"))
@@ -544,7 +633,7 @@ def save_module(pickler, obj):
         or is_dill(pickler, child=True)
         and (
             obj is pickler._main
-            or is_in_pickled_modules(obj.__name__, pickler.pickled_modules)
+            or fnmatch.filter(pickler.pickled_modules, obj.__name__)
         )
     ):
         module_dict = obj.__dict__.copy()
@@ -600,8 +689,16 @@ class PretPickler(Pickler):
     dispatch[WeakValueDictionary] = save_weak_value_dict
     dispatch[WeakKeyDictionary] = save_weak_key_dict
     dispatch[ModuleType] = save_module
+    dispatch[CodeType] = save_code_as_source
 
-    def __init__(self, *args, no_recurse_in=None, pickled_modules=(), **kwds):
+    def __init__(
+        self,
+        *args,
+        no_recurse_in=None,
+        pickled_modules=(),
+        save_code_as_source=False,
+        **kwds,
+    ):
         self.file = io.BytesIO()
 
         super().__init__(self.file, *args, **kwds)
@@ -611,6 +708,7 @@ class PretPickler(Pickler):
 
         self.no_recurse_in = no_recurse_in or {}
         self.pickled_modules = pickled_modules
+        self.save_code_as_source = save_code_as_source
 
         self.modules_dict = {}
         self.saving_modules = set()
