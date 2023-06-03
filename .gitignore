@@ -152,9 +152,13 @@ package-lock.json
 **/coverage/
 
 # Compiled JS
-#*.js
-#*.js.map
+pret/js-extension
+pret/js-base
+client/**/*.js
+client/**/*.js.map
 
+# JS globals
+client/globals.ts
 
 .vscode
 

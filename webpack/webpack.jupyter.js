@@ -25,6 +25,7 @@ module.exports = {
     },
     resolve: {
         extensions: ['.tsx', '.ts', '.js', '.py', '.css'],
+        alias: {'@pret-globals': path.resolve('client/globals.ts')}
     },
     optimization: {
         usedExports: true,

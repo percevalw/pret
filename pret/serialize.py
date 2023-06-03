@@ -236,13 +236,17 @@ def globalvars(func, recurse=True, builtin=False):
     return dict((name, globs[name]) for name in func if name in globs)
 
 
+def filter_patterns(patterns, query):
+    return any(fnmatch.fnmatch(query, p) for p in patterns)
+
+
 def _locate_function(obj, pickler=None):
     """Adapter for dill._dill._locate_function"""
     module_name = getattr(obj, "__module__", None)
 
     if (
         module_name is None
-        or fnmatch.filter(["__main__", *pickler.pickled_modules], module_name)
+        or filter_patterns(["__main__", *pickler.pickled_modules], module_name)
         or pickler
         and is_dill(pickler, child=False)
         and pickler._session
@@ -452,7 +456,7 @@ def save_module_dict(pickler, obj):
         "__name__" in obj
         and type(obj["__name__"]) is str
         and obj is getattr(_import_module(obj["__name__"], True), "__dict__", None)
-        and not fnmatch.filter(pickler.pickled_modules, obj["__name__"])
+        and not filter_patterns(pickler.pickled_modules, obj["__name__"])
     ):
         logger.trace(pickler, "D4: %s", _repr_dict(obj))  # obj
         pickler.write(bytes("c%s\n__dict__\n" % obj["__name__"], "UTF-8"))
@@ -633,7 +637,7 @@ def save_module(pickler, obj):
         or is_dill(pickler, child=True)
         and (
             obj is pickler._main
-            or fnmatch.filter(pickler.pickled_modules, obj.__name__)
+            or filter_patterns(pickler.pickled_modules, obj.__name__)
         )
     ):
         module_dict = obj.__dict__.copy()

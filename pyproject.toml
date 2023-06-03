@@ -70,9 +70,8 @@ editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 
 
 [tool.hatch.build]
-artifact = [
-    "**/js-extension/",
-    "**/js-base/",
+artifacts = [
+    "pret/js-extension",
 ]
 
 [tool.hatch.build.targets.wheel]
