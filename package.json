@@ -46,7 +46,8 @@
     "react": ">=17.0.2",
     "react-dom": ">=17.0.2",
     "ts-loader": "^9.4.2",
-    "webpack": "^5.83.1"
+    "webpack": "^5.83.1",
+    "typescript": "^4.4.4"
   },
   "jupyterlab": {
     "extension": "client/jupyter/plugin",
