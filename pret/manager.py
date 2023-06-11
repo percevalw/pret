@@ -260,6 +260,67 @@ class JupyterClientManager(Manager):
         )
 
 
+class StandaloneServerManager(Manager):
+    def __init__(self):
+        super().__init__()
+        self.connections = {}
+        self._dillable = StandaloneClientManager()
+
+    # def __reduce__(self):
+    #     return StandaloneClientManager, ()
+
+    def register_connection(self, connection_id):
+        queue = asyncio.Queue()
+        self.connections[connection_id] = queue
+        return queue
+
+    def unregister_connection(self, connection_id):
+        self.connections.pop(connection_id)
+
+    def send_message(self, method, data, connection_ids=None):
+        if connection_ids is None:
+            connection_ids = self.connections.keys()
+        for connection_id in connection_ids:
+            self.connections[connection_id].put_nowait((method, data))
+
+    async def handle_websocket_msg(self, data, connection_id):
+        result = self.handle_message(data["method"], data["data"])
+        if result is not None:
+            if inspect.isawaitable(result):
+                result = await result
+            self.send_message(*result, connection_ids=[connection_id])
+
+
+class StandaloneClientManager(Manager):
+    def __init__(self):
+        super(StandaloneClientManager, self).__init__()
+
+    async def send_message(self, method, data):
+        response = await pyodide.http.pyfetch(
+            "method",
+            method="POST",
+            body=json.dumps({"method": method, "data": data}),
+            headers={"Content-Type": "application/json"},
+        )
+        result = await response.json()
+        if "method" in result and "data" in result:
+            future = self.handle_message(result["method"], result["data"])
+            if inspect.isawaitable(future):
+                await future
+
+
+def check_jupyter_environment():
+    try:
+        from IPython import get_ipython
+
+        if get_ipython() is not None:
+            return True
+    except ImportError:
+        pass
+
+    return False
+
+
 def make_get_manager() -> Callable[[], Manager]:
     manager = None
 
@@ -278,8 +339,26 @@ def make_get_manager() -> Callable[[], Manager]:
 
         return manager
 
+    def get_standalone_client_manager():
+        nonlocal manager
+        if manager is None:
+            manager = StandaloneClientManager()
+
+        return manager
+
+    @pickle_as(get_standalone_client_manager)
+    def get_standalone_server_manager():
+        nonlocal manager
+        if manager is None:
+            manager = StandaloneServerManager()
+
+        return manager
+
     # check if we are in a jupyter environment
-    return get_jupyter_server_manager
+    if check_jupyter_environment():
+        return get_jupyter_server_manager
+    else:
+        return get_standalone_server_manager
 
 
 get_manager = make_get_manager()
