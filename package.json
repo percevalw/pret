@@ -1,6 +1,7 @@
 {
   "name": "pret",
   "main": "client/index.tsx",
+  "version": "0.1.0",
   "scripts": {
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
     "build:dev": "jlpm clean && jlpm build:standalone && jlpm build:jupyter:dev",
@@ -30,17 +31,18 @@
     "react-dom": ">=17.0.2"
   },
   "dependencies": {
-    "@emotion/react": "^11.10.5",
-    "@emotion/styled": "^11.10.5",
-    "@mui/material": "^5.11.8",
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/material": "^5.13.1",
+    "allotment": "^1.19.0",
     "css-loader": "^6.7.3",
-    "pyodide": "^0.22.1",
+    "pyodide": "^0.23.2",
     "regenerator-runtime": "^0.13.11",
-    "style-loader": "^3.3.1",
+    "style-loader": "^3.3.2",
     "use-sync-external-store": "^1.2.0"
   },
   "devDependencies": {
-    "@jupyterlab/builder": "^3.6.0",
+    "@jupyterlab/builder": "^3.6.3",
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
     "prettier": "^2.8.8",
