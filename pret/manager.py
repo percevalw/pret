@@ -12,6 +12,7 @@ from typing import Any, Callable
 from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 
 from ipykernel.comm import Comm
+
 from pret.bridge import js, pyodide
 from pret.serialize import pickle_as
 
@@ -67,12 +68,14 @@ class weakmethod:
     def __call__(self, *args, **kwargs):
         if self.owner is None:
             raise Exception(
-                "Function was never bound to a class scope, you should use it as a decorator on a method"
+                "Function was never bound to a class scope, you should use it as a "
+                "decorator on a method"
             )
         instance = self.instance()
         if instance is None:
             raise Exception(
-                f"Cannot call {self.owner.__name__}.{self.cls_method.__name__} because instance has been destroyed"
+                f"Cannot call {self.owner.__name__}.{self.cls_method.__name__} because "
+                f"instance has been destroyed"
             )
         return self.cls_method(instance, *args, **kwargs)
 
@@ -84,7 +87,7 @@ class Manager:
         # the content of the value tuples
         self.functions = WeakValueDictionary()
         self.states: WeakValueDictionary[str, Any] = WeakValueDictionary()
-        self.states_unsubcribe: WeakKeyDictionary[Any, set] = WeakKeyDictionary()
+        self.states_unsubcribe: WeakKeyDictionary[Any, Callable] = WeakKeyDictionary()
         self.call_futures = {}
         self.disabled_state_sync = set()
 
@@ -256,7 +259,7 @@ class JupyterClientManager(Manager):
         if self.env_handler is None:
             raise Exception("No environment handler set")
         self.env_handler.sendMessage(
-            method, js.Object.fromEntries(pyodide.ffi.to_js(data))
+            method, pyodide.ffi.to_js(data, dict_converter=js.Object.fromEntries)
         )
 
 

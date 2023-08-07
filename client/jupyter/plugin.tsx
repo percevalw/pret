@@ -25,6 +25,8 @@ import {PretViewWidget} from "./widget";
 
 import "./keep-hidden-cell-output";
 
+import '@pret-globals';
+
 const MIMETYPE = 'application/vnd.pret+json';
 // // export const notebookIcon = new LabIcon({name: 'ui-components:pret', svgstr: pretSvgstr});
 

@@ -1,6 +1,7 @@
 import base64
 import functools
 import inspect
+from types import FunctionType
 from typing import Callable, TypeVar
 
 from pret.bridge import auto_start_async, create_proxy, js, pyodide
@@ -14,7 +15,10 @@ def create_element(element_type, props, *children):
     result = js.React.createElement(
         element_type,
         props,
-        *pyodide.ffi.to_js(children),
+        *pyodide.ffi.to_js(
+            children,
+            dict_converter=js.Object.fromEntries,
+        ),
     )
     return result
 
@@ -26,7 +30,8 @@ def make_create_element_from_function(fn, with_proxy=False):
 
         @create_proxy
         def react_type_fn(props, ctx=None):
-            props = props.to_py(depth=1)
+            if isinstance(props, pyodide.ffi.JsProxy):
+                props = props.to_py(depth=1)
             children = props.pop("children", ())
             return fn(*children, **props)
 
@@ -40,22 +45,49 @@ def make_create_element_from_function(fn, with_proxy=False):
     return create
 
 
+def wrap_prop(key, prop):
+    if inspect.iscoroutinefunction(prop):
+        return auto_start_async(prop)
+    if isinstance(prop, FunctionType):
+
+        def wrapped(*args, **kwargs):
+            args = [
+                arg.to_py() if isinstance(arg, pyodide.ffi.JsProxy) else arg
+                for arg in args
+            ]
+            kwargs = {
+                kw: arg.to_py() if isinstance(arg, pyodide.ffi.JsProxy) else arg
+                for kw, arg in kwargs
+            }
+            return prop(*args, **kwargs)
+
+        return wrapped
+    else:
+        return prop
+
+
 def stub_component(name, props_mapping) -> Callable[[T], T]:
     def make(fn):
-        def wrapped(*children, **props):
+        def create_fn(*children, **props):
             js_props = pyodide.ffi.to_js(
-                {
-                    props_mapping.get(k, k): auto_start_async(v)
-                    # check if callable
-                    if inspect.iscoroutinefunction(v) else v
-                    for k, v in props.items()
-                },
+                {props_mapping.get(k, k): wrap_prop(k, v) for k, v in props.items()},
                 dict_converter=js.Object.fromEntries,
             )
             return create_element(
                 name,
                 js_props,
                 *children,
+            )
+
+        @functools.wraps(fn)
+        @pickle_as(create_fn)
+        def wrapped(*children, detach=False, **props):
+            def render():
+                return create_fn(*children, **props)
+
+            return Renderable(
+                render,
+                detach=detach,
             )
 
         return wrapped
@@ -71,6 +103,7 @@ def component(fn):
     def wrapped(*children, detach=False, **props):
         def render():
             return create_fn(*children, **props)
+
         return Renderable(
             render,
             detach=detach,

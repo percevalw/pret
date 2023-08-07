@@ -49,7 +49,7 @@ select = [
     "I001"
 ]
 fixable = ["E", "F", "W", "I"]
-per-file-ignores = {"**/__init__.py" = "F401"}
+per-file-ignores = {"**/__init__.py" = ["F401"]}
 
 
 # ----- Build configuration -----
