@@ -1,6 +1,7 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom";
 import { loadPyodide } from "pyodide";
+import Loading from "../components/Loading";
 import DESERIALIZE_PY from "../deserialize.py";
 
 import "@pret-globals";
@@ -105,7 +106,7 @@ document.body.appendChild(rootDiv);
 
 ReactDOM.render(
   <React.StrictMode>
-    <Suspense fallback={"Loading"}>
+    <Suspense fallback={<Loading />}>
       <RenderBundle />
     </Suspense>
   </React.StrictMode>,
