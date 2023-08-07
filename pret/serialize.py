@@ -1,3 +1,4 @@
+import fnmatch
 import importlib
 import io
 import sys
@@ -8,19 +9,15 @@ from inspect import iscode, isfunction, ismethod
 from pickle import DICT, EMPTY_DICT, MARK
 from typing import Any
 from weakref import WeakKeyDictionary, WeakSet, WeakValueDictionary
-import fnmatch
-import textwrap
 
 from dill._dill import (
     CodeType,
     EllipsisType,
     FunctionType,
-    Getattr,
     ModuleType,
     NotImplementedType,
     Pickler,
     PicklingWarning,
-    Reduce,
     StockPickler,  # noqa: F401
     TypeType,
     __builtin__,
@@ -38,84 +35,13 @@ from dill._dill import (
     _typemap,
     is_dill,
     logger,
-    singletontypes,
     save_code,
+    singletontypes,
 )
 from dill.detect import getmodule, nestedglobals
+from pygetsource import getfactory
 
 from pret.settings import settings
-import ast
-
-import inspect
-
-
-def reconstruct_arguments_str(code):
-    arg_details = inspect.getargs(code)
-    sig = []
-    if len(arg_details.args):
-        sig.append(", ".join(arg_details.args))
-    keyword_only_args = getattr(arg_details, "kwonlyargs", None)
-    if keyword_only_args:
-        sig.append("*, " + ", ".join(keyword_only_args))
-    if arg_details.varargs:
-        sig.append("*" + arg_details.varargs)
-    if arg_details.varkw:
-        sig.append("**" + arg_details.varkw)
-    return ", ".join(sig)
-
-
-def get_source_code(code):
-    if code.co_name == "<lambda>":
-        try:
-            # from decompyle3.main import decompile
-            # decompile(code, out=buffer)
-            # buffer = StringIO()
-            # lines = buffer.getvalue().splitlines()
-            # lines = lines[[line.startswith("#") for line in lines].index(False):]
-            # function_body = "\n".join(lines)
-
-            from pycdc import decompyle
-            import marshal
-
-            function_body = decompyle(marshal.dumps(code))
-        except:
-            raise Exception(
-                f"Cannot obtain source from {code}.\n"
-                f"lambda functions have partial support for python < 3.11.\n"
-                f"Ensure you have installed `pycdc` to enable code decompilation."
-            )
-        function_name = "_fn_"
-        # TODO: handle async lambdas ?
-        def_str = "def"
-    else:
-        source_code = inspect.getsource(code)
-        tree = ast.parse(textwrap.dedent(source_code))
-        body = tree.body[0]
-        lines = source_code.splitlines()
-        function_body = textwrap.dedent("\n".join(lines[body.body[0].lineno - 1 :]))
-        def_str = "async def" if isinstance(body, ast.AsyncFunctionDef) else "def"
-        function_name = body.name
-
-    function_code = (
-        f"{def_str} {function_name}({reconstruct_arguments_str(code)}):\n"
-        + f"{textwrap.indent(function_body, '  ')}\n"
-    )
-
-    # Simulate the existence of free variables if there are closures
-    # to force Python to insert the right bytecode instructions for loading them.
-    if code.co_freevars:
-        free_vars = " = ".join(code.co_freevars) + " = None"
-        factory_code = (
-            f"def _factory_():\n"
-            + (f"  {free_vars}\n" if free_vars else "")
-            + f"{textwrap.indent(function_code, '  ')}\n"
-            f"  return {function_name}\n"
-            f"_fn_ = _factory_()\n"
-        )
-    else:
-        factory_code = f"{function_code}\n" f"_fn_ = {function_name}\n"
-
-    return factory_code
 
 
 def save_code_as_source(pickler, obj):
@@ -127,7 +53,9 @@ def save_code_as_source(pickler, obj):
         save_code(pickler, obj)
         return
 
-    pickler.save_reduce(create_code_from_source, (get_source_code(obj),), obj=obj)
+    factory_code = getfactory(obj)
+
+    pickler.save_reduce(create_code_from_source, (factory_code,), obj=obj)
 
 
 def create_code_from_source(source_code):
@@ -263,60 +191,6 @@ def _locate_function(obj, pickler=None):
     else:
         found = _import_module(module_name + "." + obj.__name__, safe=True)
         return found is obj
-
-
-def _save_with_postproc(
-    pickler, reduction, is_pickler_dill=None, obj=Getattr.NO_DEFAULT, postproc_list=None
-):
-    """Adapted from dill._dill._save_with_postproc"""
-    if obj is Getattr.NO_DEFAULT:
-        obj = Reduce(reduction)  # pragma: no cover
-
-    if is_pickler_dill is None:
-        is_pickler_dill = is_dill(pickler, child=True)
-    if is_pickler_dill:
-        if postproc_list is None:
-            postproc_list = []
-
-        # Recursive object not supported. Default to a global instead.
-        if id(obj) in pickler._postproc:
-            name = (
-                "%s.%s " % (obj.__module__, getattr(obj, "__qualname__", obj.__name__))
-                if hasattr(obj, "__module__")
-                else ""
-            )
-            warnings.warn(
-                "Cannot pickle %r: %shas recursive self-references that trigger a RecursionError."
-                % (obj, name),
-                PicklingWarning,
-            )
-            pickler.save_global(obj)
-            return
-        pickler._postproc[id(obj)] = postproc_list
-
-    # TODO: Use state_setter in Python 3.8 to allow for faster cPickle implementations
-    pickler.save_reduce(*reduction, obj=obj)
-
-    if is_pickler_dill:
-        # pickler.x -= 1
-        # print(pickler.x*' ', 'pop', obj, id(obj))
-        postproc = pickler._postproc.pop(id(obj))
-        # assert postproc_list == postproc, 'Stack tampered!'
-        for reduction in reversed(postproc):
-            if reduction[0] is _setitems:
-                # use the internal machinery of pickle.py to speedup when
-                # updating a dictionary in postproc
-                dest, source = reduction[1]
-                if source:
-                    pickler.write(pickler.get(pickler.memo[id(dest)][0]))
-                    pickler._batch_setitems(iter(source.items()))
-                else:
-                    # Updating with an empty dictionary. Same as doing nothing.
-                    continue
-            else:
-                pickler.save_reduce(*reduction)
-            # pop None created by calling preprocessing step off stack
-            pickler.write(bytes("0", "UTF-8"))
 
 
 def save_function(pickler, obj):
@@ -468,8 +342,7 @@ def save_module_dict(pickler, obj):
         and not obj["__name__"] == __name__
     ):
         if obj["__name__"] not in pickler.saving_modules:
-            # we will recreate the module using the create_module function when loading it
-            # StockPickler.save_dict(pickler, obj)
+            # we will recreate the module using the create_module function when loading
             pickler.saving_modules.add(obj["__name__"])
             pickler.save_reduce(
                 create_module_with_dict,
@@ -533,8 +406,6 @@ def save_type(pickler, obj, postproc_list=None):
     """Adapted from dill._dill._save_type"""
     if obj in _typemap:
         logger.trace(pickler, "T1: %s", obj)
-        # if obj in _incedental_types:
-        #     warnings.warn('Type %r may only exist on this implementation of Python and cannot be unpickled in other implementations.' % (obj,), PicklingWarning)
         pickler.save_reduce(_load_type, (_typemap[obj],), obj=obj)
         logger.trace(pickler, "# T1")
     elif obj.__bases__ == (tuple,) and all(
@@ -616,8 +487,8 @@ def save_type(pickler, obj, postproc_list=None):
                 )
             if obj_recursive:
                 warnings.warn(
-                    "Cannot pickle %r: %s.%s has recursive self-references that trigger a RecursionError."
-                    % (obj, obj.__module__, obj_name),
+                    "Cannot pickle %r: %s.%s has recursive self-references that "
+                    "trigger a RecursionError." % (obj, obj.__module__, obj_name),
                     PicklingWarning,
                 )
             # print (obj.__dict__)
@@ -724,7 +595,7 @@ class PretPickler(Pickler):
         try:
             if "_dillable" in obj.__dict__:
                 obj = obj._dillable
-        except:
+        except AttributeError:
             pass
         return super().save(obj)
 

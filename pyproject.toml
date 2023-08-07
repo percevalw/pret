@@ -14,7 +14,8 @@ dependencies = [
     "ipykernel",
     "dill",
     "quart",
-    "typer"
+    "typer",
+    "pygetsource",
 ]
 
 # ----- CLI configuration -----
