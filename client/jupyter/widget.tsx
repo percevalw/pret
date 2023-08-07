@@ -3,6 +3,8 @@ import ReactDOM from "react-dom";
 import {Widget as LuminoWidget} from "@lumino/widgets";
 
 import PretJupyterHandler from "./manager";
+import Loading from "../components/Loading";
+
 
 
 export type PretViewData = {
@@ -112,7 +114,7 @@ export class PretViewWidget extends LuminoWidget {
         }
 
         ReactDOM.render(
-            <Suspense fallback={"Loading"}><Render/></Suspense>,
+            <Suspense fallback={<Loading/>}><Render/></Suspense>,
             this.node,
         );
 
