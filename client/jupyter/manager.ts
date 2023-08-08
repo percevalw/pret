@@ -28,6 +28,7 @@ React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 
 import DESERIALIZE_PY from "../deserialize.py";
 
+window.React = React;
 
 export default class PretJupyterHandler {
     get readyResolve(): any {
@@ -50,6 +51,7 @@ export default class PretJupyterHandler {
     private pyodide: PyodideInterface;
     private unpack: (data: string, unpickler_id: string, chunk_idx: number) => [PyProxy, PyProxy];
     private pyManager: PyProxy;
+    private isStartingPython: boolean;
     public ready: Promise<any>;
     private _readyResolve: (value?: any) => void;
     private _readyReject: (reason?: any) => void;
@@ -65,24 +67,6 @@ export default class PretJupyterHandler {
         this.ready = new Promise((resolve, reject) => {
             this._readyResolve = resolve;
             this._readyReject = reject;
-        });
-
-        loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.2/full/"}).then(async (pyodide) => {
-            this.pyodide = pyodide;
-            await pyodide.loadPackage("micropip");
-            const micropip = pyodide.pyimport("micropip");
-            await micropip.install("dill");
-            window.React = React;
-            this.unpack = await pyodide.runPythonAsync(DESERIALIZE_PY);
-        }).then(
-            () => {
-                if (this.comm) {
-                    this._readyResolve();
-                }
-            }
-        ).catch((e) => {
-            console.error(e);
-            this._readyReject(e);
         });
 
         // https://github.com/jupyter-widgets/ipywidgets/commit/5b922f23e54f3906ed9578747474176396203238
@@ -111,6 +95,33 @@ export default class PretJupyterHandler {
         this.connectToAnyKernel().then();
 
         this.settings = settings;
+    }
+
+    startPython = () => {
+        if (this.unpack) {
+            return;
+        }
+        if (this.isStartingPython) {
+            return;
+        }
+        this.isStartingPython = true;
+        loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.2/full/"}).then(async (pyodide) => {
+            this.pyodide = pyodide;
+            await pyodide.loadPackage("micropip");
+            const micropip = pyodide.pyimport("micropip");
+            await micropip.install("dill");
+            this.unpack = await pyodide.runPythonAsync(DESERIALIZE_PY);
+            this.isStartingPython = false;
+        }).then(
+            () => {
+                if (this.comm) {
+                    this._readyResolve();
+                }
+            }
+        ).catch((e) => {
+            console.error(e);
+            this._readyReject(e);
+        });
     }
 
     sendMessage = (method: string, data: any) => {
