@@ -37,6 +37,7 @@ export class PretViewWidget extends LuminoWidget {
         this._mimeType = options.mimeType;
         this._viewData = options.view_data;
         this.manager = manager;
+        manager.startPython();
 
         this.model = null;
 

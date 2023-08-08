@@ -168,16 +168,21 @@ export function registerPretJupyterHandler(
     rendermime: IRenderMimeRegistry,
     renderers: Generator<PretViewWidget>,
 ) {
-    let manager = contextToPretJupyterHandlerRegistry.get(context);
-    if (!manager) {
-        manager = new PretJupyterHandler(context, SETTINGS);
+    const ensureManager = () => {
+        if (manager) {
+            return manager;
+        }
+        const instance = new PretJupyterHandler(context, SETTINGS);
         // @ts-ignore
-        window.pretManager = manager;
-        contextToPretJupyterHandlerRegistry.set(context, manager);
+        window.pretManager = instance;
+        contextToPretJupyterHandlerRegistry.set(context, instance);
+        manager = instance;
+        return instance;
     }
+    let manager = contextToPretJupyterHandlerRegistry.get(context);
 
     for (const r of renderers) {
-        r.manager = manager;
+        r.manager = ensureManager();
     }
 
     // Replace the placeholder widget renderer with one bound to this widget
@@ -187,7 +192,7 @@ export function registerPretJupyterHandler(
         {
             safe: true,
             mimeTypes: [MIMETYPE],
-            createRenderer: options => new PretViewWidget(options, manager)
+            createRenderer: options => new PretViewWidget(options, ensureManager())
         },
         0
     );
@@ -196,7 +201,9 @@ export function registerPretJupyterHandler(
         if (rendermime) {
             rendermime.removeMimeType(MIMETYPE);
         }
-        manager.dispose();
+        if (manager) {
+            manager.dispose();
+        }
     });
 }
 
