@@ -12,10 +12,12 @@ from weakref import WeakKeyDictionary, WeakValueDictionary
 
 from .bridge import create_proxy, js, pyodide, to_js
 from .manager import get_manager
-from .stubs.react import use_effect, use_ref, use_sync_external_store
+from .ui.react import use_effect, use_ref, use_sync_external_store
 
 
 def get_untracked(obj):
+    if isinstance(obj, (TrackedDictProxy, TrackedListProxy)):
+        return obj._proxy_object
     return obj
 
 
@@ -88,7 +90,7 @@ class ProxyState:
 
     def remove_prop_listener(self, prop):
         entry = self.child_proxy_states.pop(prop, None)
-        if entry is not None:
+        if entry is not None and entry[1] is not None:
             entry[1]()
 
     def add_listener(self, listener: Callable):
@@ -183,13 +185,13 @@ class DictProxy(dict):
         # Ensure that the value is proxied
         if value not in proxy_state_map:  # and proxied not in ref_set:
             proxied = proxy(value)
-            is_builtin = value is proxied
+            created_a_proxy = value is not proxied and is_proxy(proxied)
         else:
-            is_builtin = False
             proxied = value
+            created_a_proxy = False
 
         # If a proxy was created (nested object), add a prop listener to it
-        if not is_builtin:
+        if created_a_proxy:
             child_proxy_state = proxy_state_map.get(proxied)
             if child_proxy_state:
                 proxy_state.add_prop_listener(key, child_proxy_state)
@@ -281,19 +283,29 @@ class ListProxy(list):
         # Ensure that the value is proxied
         if value not in proxy_state_map:  # and proxied not in ref_set:
             proxied = proxy(value)
-            is_builtin = value is proxied
+            created_a_proxy = value is not proxied and is_proxy(proxied)
         else:
-            is_builtin = False
             proxied = value
+            created_a_proxy = False
 
         # If a proxy was created (nested object), add a prop listener to it
-        if not is_builtin:
+        if created_a_proxy:
             child_proxy_state = proxy_state_map.get(proxied)
             if child_proxy_state:
                 proxy_state.add_prop_listener(key, child_proxy_state)
 
         super().__setitem__(key, proxied)
         proxy_state.notify_update(["__setitem__", [key], value])
+
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        self.proxy_state.remove_prop_listener(key)
+        self.proxy_state.notify_update(["__delitem__", [key], None])
+
+    def pop(self, index=-1):
+        value = super().pop(index)
+        self.proxy_state.notify_update(["__delitem__", [index], None])
+        return value
 
     def append(self, value) -> None:
         # Re-assign prop listener
@@ -305,13 +317,13 @@ class ListProxy(list):
         # Ensure that the value is proxied
         if value not in proxy_state_map:  # and proxied not in ref_set:
             proxied = proxy(value)
-            is_builtin = value is proxied
+            created_a_proxy = value is not proxied and is_proxy(proxied)
         else:
-            is_builtin = False
             proxied = value
+            created_a_proxy = False
 
         # If a proxy was created (nested object), add a prop listener to it
-        if not is_builtin:
+        if created_a_proxy:
             child_proxy_state = proxy_state_map.get(proxied)
             if child_proxy_state:
                 proxy_state.add_prop_listener(len(self), child_proxy_state)
@@ -346,10 +358,11 @@ class Affected:
 
 
 class TrackedDictProxy(dict):
-    def __init__(self, mapping, affected):
+    def __init__(self, mapping, affected, proxy_object):
         super().__init__(mapping)
         self._affected = affected
-        self._base_object = mapping
+        self._base_object: DictProxy = mapping
+        self._proxy_object = proxy_object
         # the only reason for this is to keep tracked item into memory
         # and avoid collection by the garbage collector when converting
         # them into js objects
@@ -359,44 +372,152 @@ class TrackedDictProxy(dict):
 
     def __getitem__(self, item):
         if self._base_object not in self._affected:
-            self_affected = self._affected[self._base_object] = Affected(
+            self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
         else:
-            self_affected = self._affected[self._base_object]
+            self_affected = self._affected[id(self._base_object)]
         self_affected.getitem_keys.add(item)
         res = tracked(
             super().__getitem__(item),
             self._affected,
+            self._proxy_object[item],
         )
         self._children.add(res)
         return res
 
     # TODO: add __len__ and other data getters
 
+    def __setitem__(self, key, value):
+        self._proxy_object[key] = value
+
+    def __delitem__(self, key):
+        del self._proxy_object[key]
+
+    def update(self, other=None, **kwargs):
+        self._proxy_object.update(other, **kwargs)
+
+    def pop(self, key, default=None):
+        return self._proxy_object.pop(key, default)
+
+    def popitem(self):
+        return self._proxy_object.popitem()
+
+    def clear(self):
+        self._proxy_object.clear()
+
+    def setdefault(self, key, default=None):
+        return self._proxy_object.setdefault(key, default)
+
     def __hash__(self):
         return id(self)
 
 
 class TrackedListProxy(list):
-    def __init__(self, sequence, affected):
+    def __init__(self, sequence, affected, proxy_object):
         super().__init__(sequence)
         self._affected = affected
         self._base_object = sequence
+        self._proxy_object = proxy_object
         # see TrackedDictProxy for explanation
         self._children = set()
 
     def __getitem__(self, item):
         if self._base_object not in self._affected:
-            self_affected = self._affected[self._base_object] = Affected(
+            self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
         else:
-            self_affected = self._affected[self._base_object]
+            self_affected = self._affected[id(self._base_object)]
         self_affected.getitem_keys.add(item)
         res = tracked(
             super().__getitem__(item),
             self._affected,
+            self._proxy_object[item],
+        )
+        self._children.add(res)
+        return res
+
+    def __iter__(self):
+        # return super().__iter__()
+        if self._base_object not in self._affected:
+            self_affected = self._affected[id(self._base_object)] = Affected(
+                self._base_object
+            )
+
+        else:
+            self_affected = self._affected[id(self._base_object)]
+        for item, (value, proxy_value) in enumerate(
+            zip(super().__iter__(), self._proxy_object)
+        ):
+            self_affected.getitem_keys.add(item)
+            res = tracked(value, self._affected, proxy_value)
+            self._children.add(res)
+            yield res
+
+    def __len__(self):
+        if self._base_object not in self._affected:
+            self_affected = self._affected[id(self._base_object)] = Affected(
+                self._base_object
+            )
+        else:
+            self_affected = self._affected[id(self._base_object)]
+        self_affected.length = True
+        return super().__len__()
+
+    def append(self, value):
+        self._proxy_object.append(value)
+
+    def extend(self, values):
+        self._proxy_object.extend(values)
+
+    def insert(self, index, value):
+        self._proxy_object.insert(index, value)
+
+    def remove(self, value):
+        self._proxy_object.remove(value)
+
+    def pop(self, index=-1):
+        return self._proxy_object.pop(index)
+
+    def clear(self):
+        self._proxy_object.clear()
+
+    def __setitem__(self, key, value):
+        self._proxy_object[key] = value
+
+    def __delitem__(self, key):
+        del self._proxy_object[key]
+
+    def __hash__(self):
+        return id(self)
+
+
+class TrackedTupleProxy:
+    def __getattribute__(self, attr):
+        if attr == "__class__":
+            return tuple
+        return super().__getattribute__(attr)
+
+    def __init__(self, sequence, affected, proxy_object):
+        self._affected = affected
+        self._base_object = sequence
+        self._proxy_object = proxy_object
+        # see TrackedDictProxy for explanation
+        self._children = set()
+
+    def __getitem__(self, item):
+        if self._base_object not in self._affected:
+            self_affected = self._affected[id(self._base_object)] = Affected(
+                self._base_object
+            )
+        else:
+            self_affected = self._affected[id(self._base_object)]
+        self_affected.getitem_keys.add(item)
+        res = tracked(
+            self._base_object[item],
+            self._affected,
+            self._proxy_object[item],
         )
         self._children.add(res)
         return res
@@ -405,27 +526,29 @@ class TrackedListProxy(list):
         len(self)
         # return super().__iter__()
         if self._base_object not in self._affected:
-            self_affected = self._affected[self._base_object] = Affected(
+            self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
 
         else:
-            self_affected = self._affected[self._base_object]
-        for item, value in enumerate(super().__iter__()):
+            self_affected = self._affected[id(self._base_object)]
+        for item, (value, proxy_value) in enumerate(
+            zip(self._base_object, self._proxy_object)
+        ):
             self_affected.getitem_keys.add(item)
-            res = tracked(value, self._affected)
+            res = tracked(value, self._affected, proxy_value)
             self._children.add(res)
             yield res
 
     def __len__(self):
         if self._base_object not in self._affected:
-            self_affected = self._affected[self._base_object] = Affected(
+            self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
         else:
-            self_affected = self._affected[self._base_object]
+            self_affected = self._affected[id(self._base_object)]
         self_affected.length = True
-        return super().__len__()
+        return len(self._base_object)
 
     def __hash__(self):
         return id(self)
@@ -435,7 +558,7 @@ def is_changed(prev_snap, next_snap, affected):
     if prev_snap is next_snap:
         return False
 
-    if type(prev_snap) != type(next_snap):
+    if type(prev_snap) is not type(next_snap):
         return True
 
     if isinstance(prev_snap, (int, float, str, bool, type(None))) or isinstance(
@@ -458,8 +581,20 @@ def is_changed(prev_snap, next_snap, affected):
 
     for key in prev_affected.getitem_keys:
         changed = is_changed(
-            prev_snap[key] if key in prev_snap else None,
-            next_snap[key] if key in next_snap else None,
+            prev_snap[key]
+            if (
+                isinstance(prev_snap, dict)
+                and key in prev_snap
+                or 0 <= key < len(prev_snap)
+            )
+            else None,
+            next_snap[key]
+            if (
+                isinstance(next_snap, dict)
+                and key in next_snap
+                or 0 <= key < len(next_snap)
+            )
+            else None,
             affected,
         )
         if changed:
@@ -494,6 +629,8 @@ def proxy(value, remote_sync=False):
         proxied = DictProxy(Dict(value), sync_id=sync_id)
     elif isinstance(value, list):
         proxied = ListProxy(List(value), sync_id=sync_id)
+    elif isinstance(value, tuple):
+        return tuple(proxy(item) for item in value)
     else:
         raise NotImplementedError(f"Cannot proxy {type(value)}")
 
@@ -502,7 +639,7 @@ def proxy(value, remote_sync=False):
     return proxied
 
 
-def tracked(value, affected):
+def tracked(value, affected, proxy_object):
     if isinstance(value, (int, float, str, bool, type(None))):
         return value
 
@@ -512,9 +649,11 @@ def tracked(value, affected):
         return proxied
 
     if isinstance(value, dict):
-        proxied = TrackedDictProxy(value, affected)
+        proxied = TrackedDictProxy(value, affected, proxy_object)
     elif isinstance(value, list):
-        proxied = TrackedListProxy(value, affected)
+        proxied = TrackedListProxy(value, affected, proxy_object)
+    elif isinstance(value, tuple):
+        proxied = TrackedTupleProxy(value, affected, proxy_object)
     else:
         raise NotImplementedError(f"Cannot track {type(value)}")
 
@@ -572,7 +711,7 @@ def subscribe(proxy_object, callback, notify_in_sync=False):
 
 
 def snapshot(value):
-    if isinstance(value, (DictProxy, ListProxy)):
+    if is_proxy(value):
         proxy_state = proxy_state_map[value]
         return proxy_state.get_snapshot()
     return value
@@ -588,41 +727,55 @@ def patch(proxy_object, ops):
 
         path = op[1]
         target = proxy_object
-        for key in path[:-1]:
-            target = target[key]
-        key = path[-1]
         value = op[2]
 
-        if op[0] == "__setitem__":
-            target[key] = value
+        if op[0] in ("__setitem__", "__delitem__", "insert"):
+            for key in path[:-1]:
+                target = target[key]
+            key = path[-1]
 
-        elif op[0] == "__delitem__":
-            del target[key]
+            if op[0] == "__setitem__":
+                target[key] = value
 
-        elif op[0] == "clear":
-            target[key].clear()
+            elif op[0] == "__delitem__":
+                del target[key]
 
-        elif op[0] == "append":
-            target[key].append(value)
+            elif op[0] == "insert":
+                target.insert(key, value)
+        else:
+            for key in path:
+                target = target[key]
 
-        elif op[0] == "extend":
-            target[key].extend(value)
+            if op[0] == "clear":
+                target.clear()
 
-        elif op[0] == "insert":
-            target.insert(key, value)
+            elif op[0] == "append":
+                target.append(value)
+
+            elif op[0] == "extend":
+                target.extend(value)
 
 
-def use_tracked(proxy_object, sync=True):
+def is_proxy(obj):
+    return obj.__class__.__name__.endswith("Proxy")
+
+
+def use_tracked(proxy_object, notify_in_sync=False):
+    if not is_proxy(proxy_object):
+        raise ValueError("use_tracked can only be used with proxy objects")
     last_snapshot = use_ref(None)
     last_affected = use_ref(None)
     in_render = True
 
     def external_store_subscribe(callback):
-        unsub = subscribe(proxy_object, callback, sync)
+        unsub = subscribe(proxy_object, callback, notify_in_sync)
         return unsub
 
     def external_store_get_snapshot():
-        next_snapshot = snapshot(proxy_object)
+        try:
+            next_snapshot = snapshot(proxy_object)
+        except KeyError:
+            return pyodide.js.undefined
         if (
             not in_render
             and last_snapshot.current
@@ -655,7 +808,7 @@ def use_tracked(proxy_object, sync=True):
     )
 
     in_render = False
-    curr_affected = WeakKeyDictionary()
+    curr_affected = dict()
 
     def side_effect():
         last_snapshot.current = curr_snapshot
@@ -663,4 +816,4 @@ def use_tracked(proxy_object, sync=True):
 
     # No dependencies, will run once after each render -> create_once_callable
     use_effect(pyodide.ffi.create_once_callable(side_effect))
-    return tracked(curr_snapshot["wrapped"], curr_affected)
+    return tracked(curr_snapshot["wrapped"], curr_affected, proxy_object)

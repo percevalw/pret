@@ -1,16 +1,16 @@
 settings = {
-    'pickler': {
-        'pickled_modules': [
+    "pickler": {
+        "pickled_modules": [
             "pret",
-            #"pret.serialize",
+            # "pret.serialize",
             "pret.state",
             "pret.render",
             "pret.bridge",
             "pret.manager",
-            "pret.stubs",
-            "pret.stubs.*",
+            "pret.hooks",
+            "pret.ui.*",
         ],
-        'recurse': True,
-        'save_code_as_source': "auto",
+        "recurse": True,
+        "save_code_as_source": "auto",
     }
 }

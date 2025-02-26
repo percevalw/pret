@@ -11,43 +11,59 @@ from pret.serialize import PretPickler, get_shared_pickler, pickle_as
 T = TypeVar("T")
 
 
-def create_element(element_type, props, *children):
+def create_element(element_type, props, children):
+    children = (
+        [
+            pyodide.ffi.to_js(child, dict_converter=js.Object.fromEntries)
+            for child in children
+        ]
+        if isinstance(children, list)
+        else pyodide.ffi.to_js(children, dict_converter=js.Object.fromEntries)
+    )
     result = js.React.createElement(
+        # element_type is either
+        # - str -> str
+        # - or py function -> PyProxy
         element_type,
         props,
-        *pyodide.ffi.to_js(
-            children,
-            dict_converter=js.Object.fromEntries,
-        ),
+        *[
+            pyodide.ffi.to_js(child, dict_converter=js.Object.fromEntries)
+            for child in children
+        ],
     )
     return result
 
 
 def make_create_element_from_function(fn, with_proxy=False):
-    if isinstance(fn, str):
-        react_type_fn = fn
-    else:
-
-        @create_proxy
-        def react_type_fn(props, ctx=None):
-            if isinstance(props, pyodide.ffi.JsProxy):
-                props = props.to_py(depth=1)
-            children = props.pop("children", ())
-            return fn(*children, **props)
+    @create_proxy
+    def react_type_fn(props, ctx=None):
+        if isinstance(props, pyodide.ffi.JsProxy):
+            props = props.to_py(depth=1)
+        # weird bug where children is a dict instead of a list, introduced between
+        # pyodide 0.23.2 and pyodide 0.26.2
+        children = props.pop("children").values() if "children" in props else []
+        return fn(*children, **props)
 
     def create(*children, **props):
-        return create_element(
-            react_type_fn if isinstance(react_type_fn, str) else react_type_fn,
-            js.Object.fromEntries(pyodide.ffi.to_js(props)),
-            children,
+        return js.React.createElement(
+            # Element_type is a py function -> PyProxy
+            react_type_fn,
+            # Passed props is a JsProxy of a JS object.
+            # Since element_type is a py function, props will come back in Python when
+            # React calls it, so it's a shallow conversion (depth=1). We could have done
+            # no pydict -> jsobject conversion (and send a PyProxy) but React expect an
+            # object
+            pyodide.ffi.to_js(props, depth=1, dict_converter=js.Object.fromEntries),
+            # Same, this proxy will be converted back to the original Python object
+            # when React calls the function, but this time we don't need to convert it
+            # to a JS Array (React will pass it as is)
+            pyodide.ffi.create_proxy(children),
         )
 
     return create
 
 
 def wrap_prop(key, prop):
-    if inspect.iscoroutinefunction(prop):
-        return auto_start_async(prop)
     if isinstance(prop, FunctionType):
 
         def wrapped(*args, **kwargs):
@@ -61,6 +77,9 @@ def wrap_prop(key, prop):
             }
             return prop(*args, **kwargs)
 
+        if inspect.iscoroutinefunction(prop):
+            return auto_start_async(wrapped)
+
         return wrapped
     else:
         return prop
@@ -69,14 +88,21 @@ def wrap_prop(key, prop):
 def stub_component(name, props_mapping) -> Callable[[T], T]:
     def make(fn):
         def create_fn(*children, **props):
-            js_props = pyodide.ffi.to_js(
-                {props_mapping.get(k, k): wrap_prop(k, v) for k, v in props.items()},
-                dict_converter=js.Object.fromEntries,
-            )
-            return create_element(
+            return js.React.createElement(
+                # element_type is either a str or a PyProxy of a JS function
+                # such as window.JoyUI.Button
                 name,
-                js_props,
-                *children,
+                # Deep convert to JS objects (depth=-1) to avoid issues with React
+                pyodide.ffi.to_js(
+                    {
+                        props_mapping.get(k, k): wrap_prop(k, v)
+                        for k, v in props.items()
+                    },
+                    dict_converter=js.Object.fromEntries,
+                    depth=-1,
+                ),
+                # Deep convert too, same reason
+                *(pyodide.ffi.to_js(child) for child in children),
             )
 
         @functools.wraps(fn)
@@ -110,6 +136,40 @@ def component(fn):
         )
 
     return wrapped
+
+
+class ClientRef:
+    registry = {}
+
+    def __init__(self, id):
+        self.id = id
+        self.current = None
+        ClientRef.registry[id] = self
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.__dict__["current"] = None
+        ClientRef.registry[self.id] = self
+
+    def __call__(self, element):
+        self.current = element
+
+    def __repr__(self):
+        return f"Ref(id={self.id}, current={repr(self.current)})"
+
+
+@pickle_as(ClientRef)
+class Ref:
+    registry = {}
+
+    def __init__(self, id):
+        self.id = id
+
+    def _remote_call(self, attr, *args, **kwargs):
+        return get_manager().remote_call(attr, args, kwargs)
+
+    def __getattr__(self, attr):
+        return functools.partial(self._remote_call, attr)
 
 
 class Renderable:

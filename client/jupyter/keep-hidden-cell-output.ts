@@ -32,7 +32,7 @@ import { JSONObject } from "@lumino/coreutils";
     const code = model.value.text;
     // @ts-ignore
     const canChangeHiddenState =
-      !cell?.outputArea?.widgets?.[0]?.widgets?.[1]?.widget_type; // <--- modified here
+      !cell?.outputArea?.widgets?.[0]?.widgets?.[1]?.keepHiddenWhenExecuted; // <--- modified here
     if (!code.trim() || !sessionContext.session?.kernel) {
       model.clearExecution();
       return;

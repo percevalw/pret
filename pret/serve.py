@@ -13,11 +13,14 @@ from quart import (
     send_from_directory,
     websocket,
 )
+from quart_cors import cors
+
 from pret.manager import get_manager
 
 
 def make_app(assets: Dict[str, Union[str, Path]]) -> Quart:
     app = Quart(__name__)
+    app = cors(app)
 
     manager = get_manager()
 

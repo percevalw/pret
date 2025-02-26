@@ -41,16 +41,18 @@ exclude = [
     ".venv",
     "build",
 ]
-ignore = []
 line-length = 88
-select = [
+lint.select = [
     "E",
     "F",
     "W",
     "I001"
 ]
-fixable = ["E", "F", "W", "I"]
-per-file-ignores = {"**/__init__.py" = ["F401"]}
+lint.fixable = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.extend-per-file-ignores]
+# Also ignore `E402` in all `__init__.py` files.
+"__init__.py" = ["E402", "F401"]
 
 
 # ----- Build configuration -----
@@ -69,13 +71,10 @@ optional-editable-build = true
 build-kwargs = { "build_cmd" = "build", "npm" = ["jlpm"] }
 editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 
-
 [tool.hatch.build]
 artifacts = [
     "pret"
 ]
-
-[tool.hatch.build.targets.wheel]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "pret/js-extension" = "share/jupyter/labextensions/pret"
