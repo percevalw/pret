@@ -28,7 +28,7 @@ React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 
 import DESERIALIZE_PY from "../deserialize.py";
 
-window.React = React;
+(window as any).React = React;
 
 export default class PretJupyterHandler {
     get readyResolve(): any {
@@ -105,7 +105,7 @@ export default class PretJupyterHandler {
             return;
         }
         this.isStartingPython = true;
-        loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.2/full/"}).then(async (pyodide) => {
+        loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/"}).then(async (pyodide) => {
             this.pyodide = pyodide;
             await pyodide.loadPackage("micropip");
             const micropip = pyodide.pyimport("micropip");
@@ -114,9 +114,10 @@ export default class PretJupyterHandler {
             this.isStartingPython = false;
         }).then(
             () => {
-                if (this.comm) {
-                    this._readyResolve();
-                }
+                // We don't need to wait for the comm to load the widgets
+                //if (this.comm) {
+                this._readyResolve();
+                //}
             }
         ).catch((e) => {
             console.error(e);

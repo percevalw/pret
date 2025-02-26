@@ -6,11 +6,11 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
-import tempfile
 
 from pret.serialize import get_shared_pickler
 from pret.serve import make_app
@@ -23,6 +23,7 @@ class RawRepr(str):
 
 class BundleMode(str, Enum):
     FEDERATED = "federated"
+    MONOLITHIC = "monolithic"
 
 
 @contextlib.contextmanager
@@ -31,9 +32,17 @@ def build(
     static_dir: Union[str, Path] = None,
     build_dir: Union[str, Path] = None,
     mode: Union[bool, str, BundleMode] = True,
+    dev: bool = False,
 ) -> Dict[str, Union[str, Path]]:
     if mode != BundleMode.FEDERATED:
-        raise Exception("Only supported mode is 'federated'")
+        npm = shutil.which("npm")
+        if not npm:
+            if mode == BundleMode.MONOLITHIC:
+                raise Exception("npm not found. Please install node to proceed.")
+            else:
+                mode = BundleMode.FEDERATED
+        elif mode != BundleMode.MONOLITHIC:
+            mode = BundleMode.MONOLITHIC
 
     if static_dir is None:
         static_dir = Path(tempfile.mkdtemp())
@@ -57,12 +66,44 @@ def build(
     # Extract js globals and them to a temp file to be bundled with webpack
     js_globals, packages = extract_js_dependencies(pickler.accessed_global_refs)
 
+    js_globals_file = build_dir / "globals.ts"
     content_hash = hashlib.md5(pickle_file_str.encode("utf-8")).hexdigest()[:20]
     pickle_filename = f"bundle.{content_hash}.pkl"
 
+    if mode == BundleMode.MONOLITHIC:
+        with js_globals_file.open("w") as f:
+            f.write(js_globals)
+
+        with (static_dir / pickle_filename).open("w") as f:
+            f.write(pickle_file_str)
+
+        webpack_config = Path(__file__).parent / "webpack.standalone.js"
+        # fmt: off
+        # run npm webpack ... in cwd:
+        print("os.getcwd()", os.getcwd())
+        subprocess.check_call(
+            [
+                npm,
+                "exec",
+                "webpack",
+                "--config", webpack_config,
+                "--env", "pretGlobalsFile=" + str(js_globals_file),
+                "--mode", "development" if dev else "production",
+            ],
+            cwd=os.getcwd(),
+        )
+        # fmt: on
+
+        assets = {
+            "*": static_dir,
+        }
+
     if mode == BundleMode.FEDERATED:
+        print("PACKAGES", packages)
         extension_static_mapping, entries = extract_prebuilt_extension_assets(packages)
         base_static_mapping, index_html = extract_prebuilt_base_assets()
+
+        print("ENTRIES", entries)
 
         index_html_str = index_html.read_text()
         index_html_str = (
@@ -84,8 +125,12 @@ def build(
             **base_static_mapping,
             **extension_static_mapping,
             pickle_filename: pickle_file_str,
+            # override the index.html file in base_static_mapping
             "index.html": index_html_str,
         }
+
+        # static_dir.mkdir(parents=True, exist_ok=True)
+        # Include entry points in the index html file
 
     yield assets
 
@@ -128,7 +173,7 @@ def extract_js_dependencies(
             continue
 
         js_module_path_parts = ref.name.split(".")
-        packages.append(ref.module._package_version.split(".")[0])
+        packages.append(ref.module._package_version)
 
         imports[
             ".".join((ref.module._package_name, *js_module_path_parts[:-1]))
@@ -176,6 +221,7 @@ def extract_prebuilt_extension_assets(
     entries = []
     for package in set(packages):
         stub_root = Path(sys.modules[package].__file__).parent
+        print("STUB ROOT", stub_root)
         static_dir = stub_root / "js-extension" / "static"
         entry = next(static_dir.glob("remoteEntry.*.js"))
         remote_name = json.loads((static_dir.parent / "package.json").read_text())[

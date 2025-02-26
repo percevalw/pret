@@ -52,7 +52,7 @@ const loadExtensions = async () => {
       await __webpack_init_sharing__("default");
       const container = (window as any)._JUPYTERLAB[path];
       await container.init(__webpack_share_scopes__.default);
-      const Module = await container.get("./index");
+      const Module = await container.get("./extension");
       return Module();
     })
   );
@@ -63,7 +63,7 @@ const ready = createResource(
     const [pyodide, bundle, extensions] = await Promise.all([
       // Load pyodide
       loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.2/full/",
+        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
       }),
       // Load the base64 bundle as a base64 string
       fetch((window as any).PRET_PICKLE_FILE).then((res) => res.text()),
@@ -74,7 +74,7 @@ const ready = createResource(
     await pyodide.loadPackage("micropip");
     const micropip = pyodide.pyimport("micropip");
     await micropip.install("dill");
-    window.React = React;
+    (window as any).React = React;
     const deserialize = pyodide.runPython(DESERIALIZE_PY);
     [makeRenderable, manager] = deserialize(bundle, "root", 0);
     if (!makeRenderable || !manager) {
@@ -99,6 +99,9 @@ const RenderBundle = () => {
     }
   }
 };
+
+// Initialize data-theme
+document.documentElement.setAttribute("data-theme", "light");
 
 const rootDiv = document.createElement("div");
 rootDiv.id = "root";
