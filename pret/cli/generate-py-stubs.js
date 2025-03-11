@@ -156,11 +156,11 @@ function isRestParameter(node) {
 
 /**
  * Get the modules available for import
- * @param languageService
  * @param sourceString
  * @returns {string[]|*[]}
  */
-function getImported(languageService, sourceString) {
+function getImported(sourceString) {
+    const languageService = makeLanguageService(sourceString);
     const prompt = `<MODULE.`;
     const autocompletePosition = sourceString.indexOf(prompt) + prompt.length;
     const completions = languageService.getCompletionsAtPosition('@fake.tsx', autocompletePosition, {
@@ -177,6 +177,49 @@ function getImported(languageService, sourceString) {
 
 
 /**
+ * Get closest package JSON content
+ * @param sourceString
+ * @returns Object
+ */
+function getClosestPackageJSON(packageName) {
+    const sourceString = `
+import "${packageName}";
+`;
+    const languageService = makeLanguageService(sourceString);
+    const definition = languageService.getDefinitionAtPosition('@fake.tsx', 9);
+
+    /** For instance if "packageName" is "../src/lib" above, we get quickInfo
+     * [
+     *   {
+     *     fileName: '/Users/perceval/Development/react-simple-dock/src/lib/index.tsx',
+     *     textSpan: { start: 0, length: 0 },
+     *     kind: 'script',
+     *     name: './src/lib',
+     *     containerName: undefined,
+     *     containerKind: undefined,
+     *     unverified: false
+     *   }
+     * ]
+     * */
+
+    if (!definition || definition.length === 0) {
+        return;
+    }
+    let path = definition[0].fileName;
+
+    while (true) {
+        const packageJSONPath = path + "/package.json";
+        if (fs.existsSync(packageJSONPath)) {
+            return JSON.parse(fs.readFileSync(packageJSONPath, 'utf8'));
+        }
+        const newPath = path.split("/");
+        newPath.pop();
+        path = newPath.join("/");
+    }
+}
+
+
+/**
  * Get the props/arguments for a function
  * @param name
  * @param languageService
@@ -184,7 +227,8 @@ function getImported(languageService, sourceString) {
  * @param snakeCaseMapping
  * @returns {{doc: null, props: null}|{doc: string, props: unknown[]}}
  */
-function getFunctionProps(name, languageService, sourceString, snakeCaseMapping) {
+function getFunctionProps(name, sourceString, snakeCaseMapping) {
+    const languageService = makeLanguageService(sourceString);
     // We can't use autocomplete now so we
     // get the type of the below prompt using the checker
     const prompt = `MODULE.${name}`;
@@ -223,12 +267,12 @@ function getFunctionProps(name, languageService, sourceString, snakeCaseMapping)
 /**
  * Extract the props from a React component
  * @param name
- * @param languageService
  * @param sourceString
  * @param snakeCaseMapping
  * @returns {{doc: null, props: null}|{doc: string, props: [(string|string),(*|string)][]}}
  */
-function getComponentProps(name, languageService, sourceString, snakeCaseMapping) {
+function getComponentProps(name, sourceString, snakeCaseMapping) {
+    const languageService = makeLanguageService(sourceString);
     const prompt = `<MODULE.${name} `;
     const autocompletePosition = sourceString.indexOf(prompt) + prompt.length;
     const completions = languageService.getCompletionsAtPosition('@fake.tsx', autocompletePosition, {
@@ -273,16 +317,8 @@ const options = {
     allowSyntheticDefaultImports: true
 };
 
-/**
- * Run the stub generator
- * @param packageName: The name of the package
- * @param jsModuleName: The name of the global client alias for the package
- * @param outputPath: The path to write the python stubs to
- */
-const run = (packageName, jsModuleName, outputPath) => {
-    const snakeCaseMapping = {};
-    let sourceString = "";
-    const makeLanguageService = () => ts.createLanguageService({
+function makeLanguageService (sourceString) {
+    return ts.createLanguageService({
         getScriptFileNames: () => ['@fake.tsx'],
         getScriptVersion: () => '1.0',
         getScriptSnapshot: (fileName) => {
@@ -294,7 +330,6 @@ const run = (packageName, jsModuleName, outputPath) => {
                 return ts.ScriptSnapshot.fromString(fileContent);
             }
             throw new Error(`File not found: ${fileName}`);
-            return undefined;
         },
         getCurrentDirectory: () => process.cwd(),
         getCompilationSettings: () => options,
@@ -304,6 +339,23 @@ const run = (packageName, jsModuleName, outputPath) => {
         readDirectory: ts.sys.readDirectory,
         getDirectories: ts.sys.getDirectories,
     }, ts.createDocumentRegistry());
+}
+
+/**
+ * Run the stub generator
+ * @param packageName: The name of the package
+ * @param jsModuleName: The name of the global client alias for the package
+ * @param outputPath: The path to write the python stubs to
+ */
+const run = (packageName, jsModuleName, outputPath) => {
+    const snakeCaseMapping = {};
+    let sourceString = "";
+
+    // Extract module name and version from package.json
+    const packageJSON = getClosestPackageJSON(packageName);
+    const displayName = packageJSON?.name || packageName;
+    const version = packageJSON?.version || "0.0.0";
+
     // Extract all potential components from the module
     sourceString = `
 import React from "react";
@@ -311,7 +363,7 @@ import * as MODULE from "${packageName}";
 
 <MODULE. />;
 `;
-    let imported = getImported(makeLanguageService(), sourceString);
+    let imported = getImported(sourceString);
     // Filter out non-react components
     sourceString = (`
 import React from "react";
@@ -319,8 +371,7 @@ import * as MODULE from "${packageName}";`
         + `\n\n` + imported.map((name) => `<MODULE.${name} />`).join("\n")
         + `\n\n` + imported.map((name) => `MODULE.${name}( )`).join("\n"));
     console.log("Running type checker on potential components & functions");
-    const languageService = makeLanguageService();
-    const diagnostics = languageService.getSemanticDiagnostics("@fake.tsx");
+    const diagnostics = makeLanguageService(sourceString).getSemanticDiagnostics("@fake.tsx");
     const nonReactComponents = diagnostics
         .filter(d => d.code === 2786 || d.code === 2604 || d.code == 2322)
         .map(d => sourceString.substring(d.start + 7, d.start + d.length));
@@ -331,7 +382,7 @@ import * as MODULE from "${packageName}";`
     const stubBody = (imported
             .filter(c => !nonReactComponents.includes(c))
             .map((componentName) => {
-                const {props, doc} = getComponentProps(componentName, languageService, sourceString, snakeCaseMapping);
+                const {props, doc} = getComponentProps(componentName, sourceString, snakeCaseMapping);
                 if (!props) {
                     console.log("Could not generate stub for component", componentName);
                     return;
@@ -343,7 +394,7 @@ import * as MODULE from "${packageName}";`
         imported
             .filter(c => !nonFunctions.includes(c))
             .map((name) => {
-                const {props, doc} = getFunctionProps(name, languageService, sourceString, snakeCaseMapping);
+                const {props, doc} = getFunctionProps(name, sourceString, snakeCaseMapping);
                 if (!props) {
                     console.log("Could not generate stub for component", name);
                     return;
@@ -357,7 +408,9 @@ from typing import Any, Union
 from pret.render import stub_component
 from pret.bridge import make_stub_js_module, js, pyodide
 
-make_stub_js_module("${jsModuleName}", "${packageName}", __name__)
+make_stub_js_module("${jsModuleName}", "${displayName}", __name__)
+
+__version__ = "${version}"
 
 if sys.version_info >= (3, 8):
     from typing import Literal
