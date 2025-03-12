@@ -173,7 +173,7 @@ def extract_js_dependencies(
             continue
 
         js_module_path_parts = ref.name.split(".")
-        packages.append(ref.module._package_version)
+        packages.append(ref.module)
 
         imports[
             ".".join((ref.module._package_name, *js_module_path_parts[:-1]))
@@ -220,10 +220,19 @@ def extract_prebuilt_extension_assets(
     mapping = {}
     entries = []
     for package in set(packages):
-        stub_root = Path(sys.modules[package].__file__).parent
-        print("STUB ROOT", stub_root)
-        static_dir = stub_root / "js-extension" / "static"
-        entry = next(static_dir.glob("remoteEntry.*.js"))
+        try:
+            # in case it's an editable install
+            stub_root = Path(sys.modules[package._stub_qualified_name].__file__).parent
+            static_dir = stub_root / "js-extension" / "static"
+            entry = next(static_dir.glob("remoteEntry.*.js"))
+        except StopIteration:
+            # otherwise, it's a regular install
+            js_package = package._js_package_name
+            static_dir = (
+                Path(sys.prefix) / f"share/jupyter/labextensions/{js_package}/static"
+            )
+            print("static_dir", static_dir)
+            entry = next(static_dir.glob("remoteEntry.*.js"))
         remote_name = json.loads((static_dir.parent / "package.json").read_text())[
             "name"
         ]
