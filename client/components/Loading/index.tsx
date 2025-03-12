@@ -2,7 +2,7 @@ import React from "react";
 import './style.css'
 
 export default () => (
-    <div style={{'minHeight': '80px', 'position': 'relative'}}>
+    <div style={{'minHeight': '80px'}}>
         <div className="loading" style={{
             'position': 'absolute',
             'top': '50%',
