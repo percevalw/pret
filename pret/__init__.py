@@ -6,16 +6,17 @@ from . import ipython_var_cleaner  # noqa: F401
 from .bridge import js, pyodide
 from .main import run
 from .render import component, server_only
-from .state import proxy, use_tracked
-from .ui.react import (
+from .state import proxy
+from .hooks import (
     use_callback,
     use_effect,
     use_memo,
     use_ref,
     use_state,
+    use_tracked,
+    use_body_style,
+    use_event_callback,
 )
-
-from .hooks import use_body_style  # isort:skip
 
 __version__ = "0.1.0"
 
@@ -26,11 +27,12 @@ __all__ = [
     "pyodide",
     "run",
     "server_only",
-    "use_body_style",
     "use_callback",
     "use_effect",
     "use_memo",
     "use_ref",
     "use_state",
     "use_tracked",
+    "use_body_style",
+    "use_event_callback",
 ]

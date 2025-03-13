@@ -9,7 +9,9 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 
-make_stub_js_module("React", "react", __name__)
+__version__ = "0.1.0"
+
+make_stub_js_module("React", "pret", "react", __version__, __name__)
 
 props_mapping = {
     "href_lang": "hrefLang",
@@ -297,35 +299,6 @@ props_mapping = {
     "disable_picture_in_picture": "disablePictureInPicture",
     "disable_remote_playback": "disableRemotePlayback",
 }
-
-
-def use_state(initial_value):
-    value, set_value = js.React.useState(pyodide.ffi.create_proxy(initial_value))
-
-    def set_proxy_value(new_value):
-        return set_value(pyodide.ffi.create_proxy(new_value))
-
-    return value.unwrap(), set_proxy_value
-
-
-def use_memo(fn, dependencies):
-    return js.React.useMemo(fn, dependencies)
-
-
-def use_ref(initial_value):
-    return js.React.useRef(initial_value)
-
-
-def use_callback(callback, dependencies=None):
-    return js.React.useCallback(callback, dependencies)
-
-
-def use_sync_external_store(subscribe, get_snapshot):
-    return js.React.useSyncExternalStore(subscribe, get_snapshot)
-
-
-def use_effect(effect, dependencies=None):
-    return js.React.useEffect(effect, pyodide.ffi.to_js(dependencies))
 
 
 @stub_component(js.React.Fragment, props_mapping)

@@ -4,9 +4,18 @@ import inspect
 from types import FunctionType
 from typing import Callable, TypeVar
 
-from pret.bridge import auto_start_async, create_proxy, js, pyodide
+from pret.bridge import (
+    auto_start_async,
+    cached_create_proxy,
+    cached_deep_to_js,
+    create_proxy,
+    js,
+    pyodide,
+    weak_cached,
+)
 from pret.manager import get_manager
 from pret.serialize import PretPickler, get_shared_pickler, pickle_as
+from pret.state import is_proxy
 
 T = TypeVar("T")
 
@@ -34,17 +43,52 @@ def create_element(element_type, props, children):
     return result
 
 
-def make_create_element_from_function(fn, with_proxy=False):
+def make_create_element_from_function(fn):
+    """
+    Turn a Python Pret function into function that creates a React element.
+
+    Parameters
+    ----------
+    fn: Callable
+        The Python function to turn into a React element creator, ie a function
+        that when invoked by React, will call the Python function with the
+        correct arguments.
+
+    Returns
+    -------
+    (**props) -> ReactElement<fn
+    """
+
     @create_proxy
     def react_type_fn(props, ctx=None):
-        if isinstance(props, pyodide.ffi.JsProxy):
-            props = props.to_py(depth=1)
-        # weird bug where children is a dict instead of a list, introduced between
+        props = props.to_py(depth=1)
+        props = {
+            key: value.unwrap()
+            if isinstance(value, pyodide.ffi.JsDoubleProxy)
+            else value
+            for key, value in props.items()
+        }
         # pyodide 0.23.2 and pyodide 0.26.2
         children = props.pop("children").values() if "children" in props else []
         return fn(*children, **props)
 
+    name = fn.__name__
+
+    def wrap_in_browser(react_fn):
+        res = js.React.memo(react_fn)
+        res.displayName = name
+        return res
+
+    react_type_fn = create_proxy(react_type_fn, wrap_in_browser=wrap_in_browser)
+
     def create(*children, **props):
+        props_as_list = [
+            [
+                k,
+                cached_create_proxy(v),
+            ]
+            for k, v in props.items()
+        ]
         return js.React.createElement(
             # Element_type is a py function -> PyProxy
             react_type_fn,
@@ -53,19 +97,23 @@ def make_create_element_from_function(fn, with_proxy=False):
             # React calls it, so it's a shallow conversion (depth=1). We could have done
             # no pydict -> jsobject conversion (and send a PyProxy) but React expect an
             # object
-            pyodide.ffi.to_js(props, depth=1, dict_converter=js.Object.fromEntries),
+            # pyodide.ffi.to_js(props, depth=1, dict_converter=js.Object.fromEntries),
+            js.Object.fromEntries(props_as_list),
             # Same, this proxy will be converted back to the original Python object
             # when React calls the function, but this time we don't need to convert it
             # to a JS Array (React will pass it as is)
-            pyodide.ffi.create_proxy(children),
+            # pyodide.ffi.create_proxy(children),
+            *(cached_deep_to_js(child) for child in children),
         )
 
     return create
 
 
-def wrap_prop(key, prop):
+@weak_cached
+def cached_wrap_prop(prop):
     if isinstance(prop, FunctionType):
 
+        @functools.wraps(prop)
         def wrapped(*args, **kwargs):
             args = [
                 arg.to_py() if isinstance(arg, pyodide.ffi.JsProxy) else arg
@@ -78,31 +126,38 @@ def wrap_prop(key, prop):
             return prop(*args, **kwargs)
 
         if inspect.iscoroutinefunction(prop):
-            return auto_start_async(wrapped)
+            wrapped = auto_start_async(wrapped)
 
-        return wrapped
+        return pyodide.ffi.to_js(wrapped)
+    elif is_proxy(prop):
+        js_prop = pyodide.ffi.to_js(
+            prop, depth=-1, dict_converter=js.Object.fromEntries
+        )
+        js.console.log(js_prop)
+        return js_prop
+    #     return pyodide.ffi.create_proxy(prop)
     else:
-        return prop
+        return pyodide.ffi.to_js(prop, depth=-1, dict_converter=js.Object.fromEntries)
 
 
 def stub_component(name, props_mapping) -> Callable[[T], T]:
     def make(fn):
         def create_fn(*children, **props):
+            props_as_list = [
+                [
+                    props_mapping.get(k, k),
+                    cached_wrap_prop(v),
+                ]
+                for k, v in props.items()
+            ]
             return js.React.createElement(
                 # element_type is either a str or a PyProxy of a JS function
                 # such as window.JoyUI.Button
                 name,
                 # Deep convert to JS objects (depth=-1) to avoid issues with React
-                pyodide.ffi.to_js(
-                    {
-                        props_mapping.get(k, k): wrap_prop(k, v)
-                        for k, v in props.items()
-                    },
-                    dict_converter=js.Object.fromEntries,
-                    depth=-1,
-                ),
+                js.Object.fromEntries(props_as_list),
                 # Deep convert too, same reason
-                *(pyodide.ffi.to_js(child) for child in children),
+                *(cached_deep_to_js(child) for child in children),
             )
 
         @functools.wraps(fn)
