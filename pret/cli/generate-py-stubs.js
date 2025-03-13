@@ -116,6 +116,7 @@ function generateComponentStubFunction(componentName, jsModuleName, props, jsDoc
   // Add Parameters section to the docstring
   let paramDocs = Array
     .from(new Set(props.map(([name]) => name)))
+    .filter(name => propsByName[name]["doc"])
     .map(name => `${name}: ${propsByName[name]["type"]}` + (propsByName[name]["doc"] ? `\n    ${propsByName[name]["doc"]}` : ""))
     .join("\n");
   if (paramDocs.length > 0) {
