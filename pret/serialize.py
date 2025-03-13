@@ -36,8 +36,13 @@ from dill._dill import (
     is_dill,
     logger,
     save_code,
-    singletontypes,
 )
+
+try:
+    from dill._dill import singletontypes
+except ImportError:
+    from dill._dill import IPYTHON_SINGLETONS as singletontypes
+
 from dill.detect import getmodule, nestedglobals
 from pygetsource import getfactory
 
@@ -461,7 +466,7 @@ def save_type(pickler, obj, postproc_list=None):
             # print ("%s\n%s" % (type(obj), obj.__name__))
             # print ("%s\n%s" % (obj.__bases__, obj.__dict__))
             slots = _dict.get("__slots__", ())
-            if type(slots) == str:
+            if type(slots) is str:
                 slots = (slots,)  # __slots__ accepts a single string
             for name in slots:
                 del _dict[name]
