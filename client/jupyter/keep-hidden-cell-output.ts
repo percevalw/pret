@@ -22,40 +22,72 @@ import { JSONObject } from "@lumino/coreutils";
 /**
  * Execute a cell given a client session.
  */
-(function (CodeCell) {
+(function(CodeCell) {
   async function execute(
     cell: CodeCell,
     sessionContext: ISessionContext,
     metadata?: JSONObject
   ): Promise<KernelMessage.IExecuteReplyMsg | void> {
     const model = cell.model;
-    const code = model.value.text;
+    // @ts-ignore
+    const code = model.sharedModel
+      ? model.sharedModel.getSource()
+      : model.value.text;
     // @ts-ignore
     const canChangeHiddenState =
       !cell?.outputArea?.widgets?.[0]?.widgets?.[1]?.keepHiddenWhenExecuted; // <--- modified here
     if (!code.trim() || !sessionContext.session?.kernel) {
-      model.clearExecution();
+      if (model.sharedModel) {
+        model.sharedModel.transact(
+          () => {
+            model.clearExecution();
+          },
+          false,
+          "silent-change"
+        );
+      } else {
+        model.clearExecution();
+      }
       return;
     }
-    const cellId = { cellId: model.id };
+    const cellId = {
+      cellId: model.sharedModel ? model.sharedModel.getId() : model.id
+    };
     metadata = {
-      ...model.metadata.toJSON(),
+      ...(model.metadata.toJSON ? model.metadata.toJSON() : model.metadata),
       ...metadata,
-      ...cellId,
+      ...cellId
     };
     const { recordTiming } = metadata;
-    model.clearExecution();
-    if (canChangeHiddenState) {
-      // <--- modified here
-      cell.outputHidden = false;
-    } // <--- modified here
-    cell.setPrompt("*");
+    if (model.sharedModel) {
+      model.sharedModel.transact(
+        () => {
+          model.clearExecution();
+          if (canChangeHiddenState) {
+            cell.outputHidden = false;
+          }
+        },
+        false,
+        "silent-change"
+      );
+    } else {
+      model.clearExecution();
+      // modified here: wrapped in a if statement here
+      if (canChangeHiddenState) {
+        cell.outputHidden = false;
+      }
+    }
+    if (cell.setPrompt) {
+      cell.setPrompt("*");
+    } else {
+      model.executionState = "running";
+    }
     model.trusted = true;
     let future:
       | Kernel.IFuture<
-          KernelMessage.IExecuteRequestMsg,
-          KernelMessage.IExecuteReplyMsg
-        >
+      KernelMessage.IExecuteRequestMsg,
+      KernelMessage.IExecuteReplyMsg
+    >
       | undefined;
     try {
       const msgPromise = OutputArea.execute(
@@ -85,15 +117,15 @@ import { JSONObject } from "@lumino/coreutils";
           const value = msg.header.date || new Date().toISOString();
           const timingInfo: any = Object.assign(
             {},
-            model.metadata.get("execution")
+            model.getMetadata ? model.getMetadata("execution") : model.metadata.get("execution")
           );
           timingInfo[`iopub.${label}`] = value;
-          model.metadata.set("execution", timingInfo);
+          model.setMetadata ? model.setMetadata("execution", timingInfo) : model.metadata.set("execution", timingInfo);
           return true;
         };
         cell.outputArea.future.registerMessageHook(recordTimingHook);
       } else {
-        model.metadata.delete("execution");
+        model.deleteMetadata ? model.deleteMetadata("execution") : model.metadata.delete("execution");
       }
       // Save this execution's future so we can compare in the catch below.
       future = cell.outputArea.future;
@@ -102,7 +134,7 @@ import { JSONObject } from "@lumino/coreutils";
       if (recordTiming) {
         const timingInfo = Object.assign(
           {},
-          model.metadata.get("execution") as any
+          model.getMetadata ? model.getMetadata("execution") as any : model.metadata.get("execution") as any
         );
         const started = msg.metadata.started as string;
         // Started is not in the API, but metadata IPyKernel sends
@@ -113,7 +145,7 @@ import { JSONObject } from "@lumino/coreutils";
         const finished = msg.header.date as string;
         timingInfo["shell.execute_reply"] =
           finished || new Date().toISOString();
-        model.metadata.set("execution", timingInfo);
+        model.setMetadata ? model.setMetadata("execution", timingInfo) : model.metadata.set("execution", timingInfo);
         if (canChangeHiddenState) {
           // <--- modified here
           cell.outputHidden = false;
@@ -124,7 +156,20 @@ import { JSONObject } from "@lumino/coreutils";
       // If we started executing, and the cell is still indicating this
       // execution, clear the prompt.
       if (future && !cell.isDisposed && cell.outputArea.future === future) {
-        cell.setPrompt("");
+        if (cell.setPrompt) {
+          cell.setPrompt("");
+        } else {
+          cell.model.executionState = "idle";
+        }
+        if (recordTiming && future.isDisposed) {
+          // Record the time when the cell execution was aborted
+          const timingInfo: any = Object.assign(
+            {},
+            model.getMetadata ? model.getMetadata("execution") : model.metadata.get("execution")
+          );
+          timingInfo["execution_failed"] = new Date().toISOString();
+          model.setMetadata ? model.setMetadata("execution", timingInfo) : model.metadata.set("execution", timingInfo);
+        }
       }
       throw e;
     }
