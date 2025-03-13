@@ -5,18 +5,17 @@ Inspired by the amazing valtio library (https://github.com/pmndrs/valtio).
 """
 
 import asyncio
+import sys
 import typing
 import uuid
 from typing import Callable, Optional, Tuple, Union
 from weakref import WeakKeyDictionary, WeakValueDictionary
 
-from .bridge import create_proxy, js, pyodide, to_js
 from .manager import get_manager
-from .ui.react import use_effect, use_ref, use_sync_external_store
 
 
 def get_untracked(obj):
-    if isinstance(obj, (TrackedDictProxy, TrackedListProxy)):
+    if isinstance(obj, (TrackedDictPretProxy, TrackedListPretProxy)):
         return obj._proxy_object
     return obj
 
@@ -139,7 +138,7 @@ class ProxyState:
         return snap
 
 
-class DictProxy(dict):
+class DictPretProxy(dict):
     def __init__(self, mapping, sync_id=None):
         super().__init__()
 
@@ -164,7 +163,7 @@ class DictProxy(dict):
         patch(self, ops)
 
     def __reduce__(self):
-        return DictProxy, (
+        return DictPretProxy, (
             self.proxy_state.get_snapshot(),
             getattr(self, "_sync_id", None),
         )
@@ -238,7 +237,7 @@ class DictProxy(dict):
         return id(self)
 
 
-class ListProxy(list):
+class ListPretProxy(list):
     def __init__(self, sequence, sync_id=None):
         super().__init__()
 
@@ -263,7 +262,7 @@ class ListProxy(list):
         patch(self, ops)
 
     def __reduce__(self):
-        return ListProxy, (
+        return ListPretProxy, (
             self.proxy_state.get_snapshot(),
             getattr(self, "_sync_id", None),
         )
@@ -357,11 +356,11 @@ class Affected:
         return f"Affected({self.getitem_keys}, {self.hasitem_keys})"
 
 
-class TrackedDictProxy(dict):
+class TrackedDictPretProxy(dict):
     def __init__(self, mapping, affected, proxy_object):
         super().__init__(mapping)
         self._affected = affected
-        self._base_object: DictProxy = mapping
+        self._base_object: DictPretProxy = mapping
         self._proxy_object = proxy_object
         # the only reason for this is to keep tracked item into memory
         # and avoid collection by the garbage collector when converting
@@ -371,7 +370,7 @@ class TrackedDictProxy(dict):
         self._children = set()
 
     def __getitem__(self, item):
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -412,8 +411,15 @@ class TrackedDictProxy(dict):
     def __hash__(self):
         return id(self)
 
+    # TEST, because pyodide js proxy_obj[attr] is translated as obj.attr in python
+    def __getattr__(self, attr):
+        try:
+            return self[attr]
+        except KeyError:
+            return None
 
-class TrackedListProxy(list):
+
+class TrackedListPretProxy(list):
     def __init__(self, sequence, affected, proxy_object):
         super().__init__(sequence)
         self._affected = affected
@@ -423,7 +429,7 @@ class TrackedListProxy(list):
         self._children = set()
 
     def __getitem__(self, item):
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -440,7 +446,7 @@ class TrackedListProxy(list):
 
     def __iter__(self):
         # return super().__iter__()
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -456,7 +462,7 @@ class TrackedListProxy(list):
             yield res
 
     def __len__(self):
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -492,6 +498,11 @@ class TrackedListProxy(list):
     def __hash__(self):
         return id(self)
 
+    def index(self, value, start=0, stop=sys.maxsize):
+        if id(self._base_object) not in self._affected:
+            self._affected[id(self._base_object)] = Affected(self._base_object)
+        return self._proxy_object.index(value, start, stop)
+
 
 class TrackedTupleProxy:
     def __getattribute__(self, attr):
@@ -507,7 +518,7 @@ class TrackedTupleProxy:
         self._children = set()
 
     def __getitem__(self, item):
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -525,7 +536,7 @@ class TrackedTupleProxy:
     def __iter__(self):
         len(self)
         # return super().__iter__()
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -541,7 +552,7 @@ class TrackedTupleProxy:
             yield res
 
     def __len__(self):
-        if self._base_object not in self._affected:
+        if id(self._base_object) not in self._affected:
             self_affected = self._affected[id(self._base_object)] = Affected(
                 self._base_object
             )
@@ -566,7 +577,7 @@ def is_changed(prev_snap, next_snap, affected):
     ):
         return prev_snap != next_snap
 
-    prev_affected = affected.get(prev_snap)
+    prev_affected = affected.get(id(prev_snap))
 
     if prev_affected is None:
         return True
@@ -583,16 +594,16 @@ def is_changed(prev_snap, next_snap, affected):
         changed = is_changed(
             prev_snap[key]
             if (
-                isinstance(prev_snap, dict)
-                and key in prev_snap
-                or 0 <= key < len(prev_snap)
+                key in prev_snap
+                if isinstance(prev_snap, dict)
+                else 0 <= key < len(prev_snap)
             )
             else None,
             next_snap[key]
             if (
-                isinstance(next_snap, dict)
-                and key in next_snap
-                or 0 <= key < len(next_snap)
+                key in next_snap
+                if isinstance(next_snap, dict)
+                else 0 <= key < len(next_snap)
             )
             else None,
             affected,
@@ -626,9 +637,9 @@ def proxy(value, remote_sync=False):
         return proxied
 
     if isinstance(value, dict):
-        proxied = DictProxy(Dict(value), sync_id=sync_id)
+        proxied = DictPretProxy(Dict(value), sync_id=sync_id)
     elif isinstance(value, list):
-        proxied = ListProxy(List(value), sync_id=sync_id)
+        proxied = ListPretProxy(List(value), sync_id=sync_id)
     elif isinstance(value, tuple):
         return tuple(proxy(item) for item in value)
     else:
@@ -644,14 +655,17 @@ def tracked(value, affected, proxy_object):
         return value
 
     weak_handle = id(value)
-    proxied = tracked_proxy_cache.get(weak_handle)
-    if proxied and proxied._base_object is value:
-        return proxied
+    try:
+        proxied = tracked_proxy_cache[weak_handle]
+        if proxied._base_object is value:
+            return proxied
+    except KeyError:
+        pass
 
     if isinstance(value, dict):
-        proxied = TrackedDictProxy(value, affected, proxy_object)
+        proxied = TrackedDictPretProxy(value, affected, proxy_object)
     elif isinstance(value, list):
-        proxied = TrackedListProxy(value, affected, proxy_object)
+        proxied = TrackedListPretProxy(value, affected, proxy_object)
     elif isinstance(value, tuple):
         proxied = TrackedTupleProxy(value, affected, proxy_object)
     else:
@@ -757,63 +771,4 @@ def patch(proxy_object, ops):
 
 
 def is_proxy(obj):
-    return obj.__class__.__name__.endswith("Proxy")
-
-
-def use_tracked(proxy_object, notify_in_sync=False):
-    if not is_proxy(proxy_object):
-        raise ValueError("use_tracked can only be used with proxy objects")
-    last_snapshot = use_ref(None)
-    last_affected = use_ref(None)
-    in_render = True
-
-    def external_store_subscribe(callback):
-        unsub = subscribe(proxy_object, callback, notify_in_sync)
-        return unsub
-
-    def external_store_get_snapshot():
-        try:
-            next_snapshot = snapshot(proxy_object)
-        except KeyError:
-            return pyodide.js.undefined
-        if (
-            not in_render
-            and last_snapshot.current
-            and last_affected.current
-            and not is_changed(
-                last_snapshot.current["wrapped"], next_snapshot, last_affected.current
-            )
-        ):
-            return last_snapshot.current
-
-        res = to_js(next_snapshot, wrap=True)
-        return res
-
-    # we don't use lambda's because of serialization issues
-    def make_proxied_external_store_subscribe():
-        return create_proxy(external_store_subscribe)
-
-    def make_proxied_external_store_get_snapshot():
-        return create_proxy(external_store_get_snapshot)
-
-    curr_snapshot = use_sync_external_store(
-        js.React.useMemo(
-            make_proxied_external_store_subscribe,
-            pyodide.ffi.to_js([]),
-        ),
-        js.React.useMemo(
-            make_proxied_external_store_get_snapshot,
-            pyodide.ffi.to_js([]),
-        ),
-    )
-
-    in_render = False
-    curr_affected = dict()
-
-    def side_effect():
-        last_snapshot.current = curr_snapshot
-        last_affected.current = curr_affected
-
-    # No dependencies, will run once after each render -> create_once_callable
-    use_effect(pyodide.ffi.create_once_callable(side_effect))
-    return tracked(curr_snapshot["wrapped"], curr_affected, proxy_object)
+    return obj.__class__.__name__.endswith("PretProxy")
