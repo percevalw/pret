@@ -93,12 +93,15 @@ class Unpickler(DillUnpickler):
         self.file.write(file.read())
         self.file.seek(pos)
         data_chunks = []
+        pos = 0
         while self.file.tell() < self.file.getbuffer().nbytes:
-            data_chunks.append(self.load())
+            data_chunks.append((self.load(), self.file.tell() - pos))
+            pos = self.file.tell()
         return data_chunks
 
 
 def load_view(data, unpickler_id, chunk_idx):
+    print(f"Loading view with unpickled ID {unpickler_id} and chunk ID {chunk_idx}")
     if unpickler_id not in chunks:
         chunks[unpickler_id] = WeakValueDictionary()
     if chunk_idx in chunks[unpickler_id]:
@@ -119,13 +122,17 @@ def load_view(data, unpickler_id, chunk_idx):
 
         next_chunk_idx = len(chunks[unpickler_id])
 
-        for result in unpickler.load_data(file):
+        for result, size in unpickler.load_data(file):
             result[0]._unpickler = unpickler
             result[0]._manager = result[1]
             chunks[unpickler_id][next_chunk_idx] = result[0]
+            print("Unpacked chunk", next_chunk_idx, "of size", size)
             next_chunk_idx += 1
 
-        assert next_chunk_idx == chunk_idx + 1
+        result = (
+            chunks[unpickler_id][chunk_idx],
+            chunks[unpickler_id][chunk_idx]._manager,
+        )
     except Exception as e:
         print("Exception while loading", e)
         import traceback

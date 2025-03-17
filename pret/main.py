@@ -33,7 +33,7 @@ def build(
     build_dir: Union[str, Path] = None,
     mode: Union[bool, str, BundleMode] = True,
     dev: bool = False,
-) -> Dict[str, Union[str, Path]]:
+) -> Tuple[Dict[str, Union[str, Path]], List[Tuple[str, str]], str]:
     if mode != BundleMode.FEDERATED:
         npm = shutil.which("npm")
         if not npm:
@@ -80,7 +80,6 @@ def build(
         webpack_config = Path(__file__).parent / "webpack.standalone.js"
         # fmt: off
         # run npm webpack ... in cwd:
-        print("os.getcwd()", os.getcwd())
         subprocess.check_call(
             [
                 npm,
@@ -98,13 +97,10 @@ def build(
             "*": static_dir,
         }
 
+    entries: List[Tuple[str, Optional[str]]] = []
     if mode == BundleMode.FEDERATED:
-        print("PACKAGES", packages)
         extension_static_mapping, entries = extract_prebuilt_extension_assets(packages)
         base_static_mapping, index_html = extract_prebuilt_base_assets()
-
-        print("ENTRIES", entries)
-
         index_html_str = index_html.read_text()
         index_html_str = (
             index_html_str.replace(
@@ -132,7 +128,7 @@ def build(
         # static_dir.mkdir(parents=True, exist_ok=True)
         # Include entry points in the index html file
 
-    yield assets
+    yield assets, entries, pickle_filename
 
     if delete_static:
         shutil.rmtree(static_dir)
@@ -231,7 +227,6 @@ def extract_prebuilt_extension_assets(
             static_dir = (
                 Path(sys.prefix) / f"share/jupyter/labextensions/{js_package}/static"
             )
-            print("static_dir", static_dir)
             entry = next(static_dir.glob("remoteEntry.*.js"))
         remote_name = json.loads((static_dir.parent / "package.json").read_text())[
             "name"
@@ -262,7 +257,7 @@ def extract_prebuilt_base_assets() -> Tuple[Dict[str, Path], Path]:
     static_dir = Path(__file__).parent / "js-base"
     entry = next(static_dir.glob("index.html"))
 
-    for static_file in static_dir.glob("*"):
+    for static_file in static_dir.glob("*.js"):
         if static_file.name not in mapping:
             mapping[static_file.name] = static_file
 
@@ -286,7 +281,7 @@ def run(
         )
         if bundle
         else contextlib.nullcontext({"*": Path(static_dir)})
-    ) as assets:
+    ) as (assets, entries, pickle_filename):
         if serve:
             app = make_app(assets)
             app.run(debug=dev, port=5001)
