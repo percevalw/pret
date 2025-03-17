@@ -176,7 +176,15 @@ def stub_component(name, props_mapping) -> Callable[[T], T]:
     return make
 
 
-def component(fn):
+def component(fn: Callable):
+    """
+    Decorator to turn a Python function into a Pret component, that
+    will be rendered by React.
+
+    Parameters
+    ----------
+    fn: Callable
+    """
     create_fn = make_create_element_from_function(fn)
 
     @functools.wraps(fn)
