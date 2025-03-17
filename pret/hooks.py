@@ -41,6 +41,7 @@ def use_state(
 
     ```python
     from pret.ui.react import div, button, p
+    from pret import component, use_state
 
 
     @component
