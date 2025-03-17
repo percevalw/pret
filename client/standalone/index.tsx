@@ -14,10 +14,6 @@ React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 // @ts-ignore
 window._empty_hook_deps = [];
 
-// @ts-ignore
-let makeRenderable = null;
-let manager = null;
-
 const createResource = (promise) => {
   let status = "loading";
   let result = promise.then(
@@ -58,36 +54,32 @@ const loadExtensions = async () => {
   );
 };
 
-const ready = createResource(
-  (async () => {
-    const [pyodide, bundle, extensions] = await Promise.all([
-      // Load pyodide
-      loadPyodide({
-        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
-      }),
-      // Load the base64 bundle as a base64 string
-      fetch((window as any).PRET_PICKLE_FILE).then((res) => res.text()),
-      // Load the extensions that will make required modules available as globals
-      loadExtensions(),
-    ]);
-    console.log(extensions);
-    await pyodide.loadPackage("micropip");
-    const micropip = pyodide.pyimport("micropip");
-    await micropip.install("dill");
-    (window as any).React = React;
-    const deserialize = pyodide.runPython(DESERIALIZE_PY);
-    [makeRenderable, manager] = deserialize(bundle, "root", 0);
-    if (!makeRenderable || !manager) {
-      throw new Error("Failed to unpack bundle");
-    }
-    return makeRenderable;
-  })()
-);
+async function loadBundle() {
+  const [pyodide, bundle, extensions] = await Promise.all([
+    // Load pyodide
+    loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
+    }),
+    // Load the base64 bundle as a base64 string
+    fetch((window as any).PRET_PICKLE_FILE).then((res) => res.text()),
+    // Load the extensions that will make required modules available as globals
+    loadExtensions(),
+  ]);
+  console.log(extensions);
+  await pyodide.loadPackage("micropip");
+  const micropip = pyodide.pyimport("micropip");
+  await micropip.install("dill");
+  (window as any).React = React;
+  await pyodide.runPythonAsync(DESERIALIZE_PY);
+  return { pyodide, bundle };
+}
 
-const RenderBundle = () => {
+const bundlePromise = loadBundle();
+
+const RenderBundle = ({ resource, chunkIdx }) => {
   try {
-    const makeRenderable = ready.read();
-    return makeRenderable();
+    const makeRenderable = resource.read(chunkIdx);
+    return makeRenderable(chunkIdx);
   } catch (err) {
     // If it's still loading, we throw err to be caught by Suspense
     if (err instanceof Promise) {
@@ -103,15 +95,34 @@ const RenderBundle = () => {
 // Initialize data-theme
 document.documentElement.setAttribute("data-theme", "light");
 
-const rootDiv = document.createElement("div");
-rootDiv.id = "root";
-document.body.appendChild(rootDiv);
+const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
 
-ReactDOM.render(
-  <React.StrictMode>
-    <Suspense fallback={<Loading />}>
-      <RenderBundle />
-    </Suspense>
-  </React.StrictMode>,
-  rootDiv
-);
+for (const chunk of pretChunks as any) {
+  const chunkIdx = parseInt(chunk.getAttribute("data-pret-chunk-idx"), 10);
+
+  const resource = createResource(
+    (async (chunkIdx) => {
+      const { pyodide, bundle } = await bundlePromise;
+      const locals = pyodide.toPy({ bundle_string: bundle });
+      const [makeRenderable, manager] = await pyodide.runPythonAsync(
+        `load_view(bundle_string, "root", ${chunkIdx})`,
+        { locals: locals }
+      );
+      if (!makeRenderable || !manager) {
+        throw new Error("Failed to unpack bundle");
+      }
+      return (idx) => {
+        console.assert(idx === chunkIdx, "Chunk index mismatch");
+        return makeRenderable();
+      }
+    })(chunkIdx)
+  );
+  ReactDOM.render(
+    <React.StrictMode>
+      <Suspense fallback={<Loading />}>
+        <RenderBundle resource={resource} chunkIdx={chunkIdx} />
+      </Suspense>
+    </React.StrictMode>,
+    chunk
+  );
+}
