@@ -248,6 +248,9 @@ class Renderable:
         data, chunk_idx = self.ensure_pickler().dump((self.dillable, get_manager()))
         return base64.encodebytes(data).decode(), chunk_idx
 
+    def __reduce__(self):
+        return self.dillable, ()
+
     def _repr_mimebundle_(self, *args, **kwargs):
         plaintext = repr(self)
         if len(plaintext) > 110:
