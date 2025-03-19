@@ -192,6 +192,7 @@ def use_effect(effect: "Callable", dependencies: "Optional[List]" = None):
     dependencies: Optional[List]
         An optional array of dependencies that determines when the effect runs.
     """
+    effect = pyodide.ffi.create_once_callable(effect)
     return js.React.useEffect(effect, pyodide.ffi.to_js(dependencies))
 
 

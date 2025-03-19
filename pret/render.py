@@ -2,7 +2,9 @@ import base64
 import functools
 import inspect
 from types import FunctionType
-from typing import Callable, TypeVar
+from typing import Awaitable, Callable, TypeVar, Union
+
+from typing_extensions import ParamSpec
 
 from pret.bridge import (
     auto_start_async,
@@ -286,5 +288,11 @@ def make_remote_callable(function_id):
     return remote_call
 
 
-def server_only(fn):
+CallableParams = ParamSpec("ServerCallableParams")
+CallableReturn = TypeVar("CallableReturn")
+
+
+def server_only(
+    fn: Callable[CallableParams, CallableReturn],
+) -> Callable[CallableParams, Union[Awaitable[CallableReturn], CallableReturn]]:
     return pickle_as(fn, make_remote_callable(get_manager().register_function(fn)))
