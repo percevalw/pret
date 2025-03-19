@@ -54,12 +54,18 @@ const loadExtensions = async () => {
   );
 };
 
+let pyodidePromise = null;
+
 async function loadBundle() {
+  if (!pyodidePromise) {
+    pyodidePromise = loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
+    });
+  }
+
   const [pyodide, bundle, extensions] = await Promise.all([
     // Load pyodide
-    loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
-    }),
+    pyodidePromise,
     // Load the base64 bundle as a base64 string
     fetch((window as any).PRET_PICKLE_FILE).then((res) => res.text()),
     // Load the extensions that will make required modules available as globals
@@ -73,8 +79,6 @@ async function loadBundle() {
   await pyodide.runPythonAsync(DESERIALIZE_PY);
   return { pyodide, bundle };
 }
-
-const bundlePromise = loadBundle();
 
 const RenderBundle = ({ resource, chunkIdx }) => {
   try {
@@ -93,36 +97,79 @@ const RenderBundle = ({ resource, chunkIdx }) => {
 };
 
 // Initialize data-theme
-document.documentElement.setAttribute("data-theme", "light");
+document.addEventListener("DOMContentLoaded", () => {
+  function updateTheme() {
+    const scheme = document.body.getAttribute("data-md-color-scheme");
+    let theme;
+    if (scheme === "default" || scheme === null) {
+      theme = "light"; // default to light if attribute is "default" or missing
+    } else if (scheme === "slate") {
+      theme = "dark";
+    } else {
+      theme = "light"; // fallback to light if any other unexpected value
+    }
+    // For instance, set a data attribute on the html element:
+    document.documentElement.setAttribute("data-theme", theme);
+  }
 
-const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
+  // Update theme immediately on load
+  updateTheme();
 
-for (const chunk of pretChunks as any) {
-  const chunkIdx = parseInt(chunk.getAttribute("data-pret-chunk-idx"), 10);
-
-  const resource = createResource(
-    (async (chunkIdx) => {
-      const { pyodide, bundle } = await bundlePromise;
-      const locals = pyodide.toPy({ bundle_string: bundle });
-      const [makeRenderable, manager] = await pyodide.runPythonAsync(
-        `load_view(bundle_string, "root", ${chunkIdx})`,
-        { locals: locals }
-      );
-      if (!makeRenderable || !manager) {
-        throw new Error("Failed to unpack bundle");
+  // Create a MutationObserver to listen for attribute changes on the body
+  const observer = new MutationObserver(mutations => {
+    mutations.forEach(mutation => {
+      if (mutation.attributeName === "data-md-color-scheme") {
+        updateTheme();
       }
-      return (idx) => {
-        console.assert(idx === chunkIdx, "Chunk index mismatch");
-        return makeRenderable();
-      }
-    })(chunkIdx)
-  );
-  ReactDOM.render(
-    <React.StrictMode>
-      <Suspense fallback={<Loading />}>
-        <RenderBundle resource={resource} chunkIdx={chunkIdx} />
-      </Suspense>
-    </React.StrictMode>,
-    chunk
-  );
+    });
+  });
+
+  // Observe changes to attributes on the body element
+  observer.observe(document.body, { attributes: true });
+});
+
+function renderPret() {
+  let bundlePromise = loadBundle();
+
+  const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
+
+  for (const chunk of pretChunks as any) {
+    const chunkIdx = parseInt(chunk.getAttribute("data-pret-chunk-idx"), 10);
+
+    const resource = createResource(
+      (async (chunkIdx) => {
+        const { pyodide, bundle } = await bundlePromise;
+        const locals = pyodide.toPy({ bundle_string: bundle });
+        const [makeRenderable, manager] = await pyodide.runPythonAsync(
+          `load_view(bundle_string, "root", ${chunkIdx})`,
+          { locals: locals }
+        );
+        if (!makeRenderable || !manager) {
+          throw new Error("Failed to unpack bundle");
+        }
+        return (idx) => {
+          console.assert(idx === chunkIdx, "Chunk index mismatch");
+          return makeRenderable();
+        };
+      })(chunkIdx)
+    );
+    ReactDOM.render(
+      <React.StrictMode>
+        <Suspense fallback={<Loading />}>
+          <RenderBundle resource={resource} chunkIdx={chunkIdx} />
+        </Suspense>
+      </React.StrictMode>,
+      chunk
+    );
+  }
+}
+
+// To support mkdocs instant navigation
+// See https://squidfunk.github.io/mkdocs-material/customization/#additional-javascript
+if ((window as any).document$) {
+  (window as any).document$?.subscribe(function () {
+    renderPret();
+  });
+} else {
+  renderPret();
 }

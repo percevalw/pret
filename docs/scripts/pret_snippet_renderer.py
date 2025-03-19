@@ -1,6 +1,5 @@
 import ast
 import os
-import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -17,14 +16,15 @@ from mkdocs.config.defaults import MkDocsConfig
 from mkdocs.plugins import BasePlugin
 from mkdocstrings.extension import AutoDocProcessor
 from mkdocstrings.plugin import MkdocstringsPlugin
+from regex import regex
 
 from pret.main import build
-from pret.render import Renderable
+from pret.serialize import clear_shared_pickler
 
-BRACKET_RE = re.compile(r"\[([^\[]+)\]")
-CITE_RE = re.compile(r"@([\w_:-]+)")
-DEF_RE = re.compile(r"\A {0,3}\[@([\w_:-]+)\]:\s*(.*)")
-INDENT_RE = re.compile(r"\A\t| {4}(.*)")
+BRACKET_RE = regex.compile(r"\[([^\[]+)\]")
+CITE_RE = regex.compile(r"@([\w_:-]+)")
+DEF_RE = regex.compile(r"\A {0,3}\[@([\w_:-]+)\]:\s*(.*)")
+INDENT_RE = regex.compile(r"\A\t| {4}(.*)")
 
 CITATION_RE = r"(\[@(?:[\w_:-]+)(?: *, *@(?:[\w_:-]+))*\])"
 
@@ -32,19 +32,19 @@ CITATION_RE = r"(\[@(?:[\w_:-]+)(?: *, *@(?:[\w_:-]+))*\])"
 class PyCodePreprocessor(FencedBlockPreprocessor):
     """Gather reference definitions and citation keys"""
 
-    FENCED_BLOCK_RE = re.compile(
+    FENCED_BLOCK_RE = regex.compile(
         dedent(
             r"""
             (?P<fence>^[ ]*(?:~{3,}|`{3,}))[ ]*                          # opening fence
             ((\{(?P<attrs>[^\}\n]*)\})|                              # (optional {attrs} or
-            (\.?(?P<lang>[\w#.+-]*)[ ]*)?                            # optional (.)lang
+            (\.?(?P<lang>[\w#.+-]*)[ ]*(\{(?P<attrs>[^\n]*)\})?)?    # optional (.)lang
             (hl_lines=(?P<quot>"|')(?P<hl_lines>.*?)(?P=quot)[ ]*)?) # optional hl_lines)
             \n                                                       # newline (end of opening fence)
             (?P<code>.*?)(?<=\n)                                     # the code block
             (?P=fence)[ ]*$                                          # closing fence
         """  # noqa: E501
         ),
-        re.MULTILINE | re.DOTALL | re.VERBOSE,
+        regex.MULTILINE | regex.DOTALL | regex.VERBOSE,
     )
 
     def __init__(self, md, code_blocks):
@@ -54,15 +54,17 @@ class PyCodePreprocessor(FencedBlockPreprocessor):
     def run(self, lines):
         new_text = ""
         text = "\n".join(lines)
+        num_pret_code_blocks = 0
         while True:
             # ----  https://github.com/Python-Markdown/markdown/blob/5a2fee/markdown/extensions/fenced_code.py#L84C9-L98  # noqa: E501
             m = self.FENCED_BLOCK_RE.search(text)
             if m:
-                code_idx = len(self.code_blocks)
                 lang, id, classes, config = None, "", [], {}
                 if m.group("attrs"):
                     id, classes, config = self.handle_attrs(get_attrs(m.group("attrs")))
-                    if len(classes):
+                    if m.group("lang"):
+                        lang = m.group("lang")
+                    elif len(classes):
                         lang = classes.pop(0)
                 else:
                     if m.group("lang"):
@@ -73,28 +75,31 @@ class PyCodePreprocessor(FencedBlockPreprocessor):
                         config["hl_lines"] = parse_hl_lines(m.group("hl_lines"))
                 # ----
                 code = m.group("code")
+                print("-----------------", lang, id, classes)
+                print(code)
 
-                if lang == "python":
+                if lang == "python" and "no-exec" not in classes:
                     self.code_blocks.append(
                         {
                             "code": dedent(code),
                             "render": "render-with-pret" in classes,
-                            "id": code_idx,
+                            "id": num_pret_code_blocks,
                         }
                     )
-
-                if True or code_idx < 1:
-                    new_text += text[: m.start()]
-                    new_text += (
-                        '<div class="pret-code-snippet" >\n'
-                        + text[m.start() : m.end()]
-                        + f'\n<div class="pret-code-snippet-view-container">'
-                        f'<div class="pret-code-snippet-view-content" data-pret-chunk-idx="{code_idx}" />'  # noqa: E501
-                        f"</div>"
-                        f"</div>\n"
-                    )
-                else:
-                    new_text += text[: m.end()]
+                    if "render-with-pret" in classes:
+                        new_text += text[: m.start()]
+                        new_text += (
+                            '<div class="pret-code-snippet" >\n'
+                            + text[m.start() : m.end()]
+                            + f'\n<div class="pret-code-snippet-view-container">'
+                            f'<div class="pret-code-snippet-view-content" data-pret-chunk-idx="{num_pret_code_blocks}" />'  # noqa: E501
+                            f"</div>"
+                            f"</div>\n"
+                        )
+                        num_pret_code_blocks += 1
+                        text = text[m.end() :]
+                        continue
+                new_text += text[: m.end()]
                 text = text[m.end() :]
             else:
                 break
@@ -158,6 +163,7 @@ class PretSnippetRendererPlugin(BasePlugin):
         self.page_code_blocks = []
         self.docs_code_blocks = {}
         self.assets = {}
+        self.entries = set()
 
     def on_config(self, config: MkDocsConfig):
         self.ext = PyCodeExtension(self.page_code_blocks)
@@ -175,9 +181,7 @@ class PretSnippetRendererPlugin(BasePlugin):
         if len(self.page_code_blocks):
             self.docs_code_blocks[str(page.url)] = list(self.page_code_blocks)
         self.page_code_blocks.clear()
-        return html
 
-    def on_post_page(self, output, page, config):
         page_code_blocks = self.docs_code_blocks.get(str(page.url))
         url_depth_count = page.url.count("/")
         assets_dir = "../" * url_depth_count + "assets/"
@@ -196,7 +200,7 @@ class PretSnippetRendererPlugin(BasePlugin):
                         filename,
                         block_idx,
                     )
-                    if isinstance(result, Renderable):
+                    if code_block["render"]:
                         renderables.append(result)
                 page_code_blocks.clear()
 
@@ -205,30 +209,43 @@ class PretSnippetRendererPlugin(BasePlugin):
                     entries,
                     pickle_filename,
                 ):
-                    webpack_trigger = '<script defer src="'
-                    webpack_bundle = assets["index.html"].split(webpack_trigger)[1]
-                    webpack_bundle = webpack_bundle.split('">')[0]
-                    output = (
-                        output.replace(
-                            "<script pret-head-scripts></script>",
-                            "".join(
-                                '<script src="{}"></script>'.format(assets_dir + file)
-                                for file, _ in entries
-                            )
-                            + f'<script src="{assets_dir + webpack_bundle}"></script>',
-                        )
-                        .replace(
-                            "'__PRET_REMOTE_IMPORTS__'",
-                            str([name for _, name in entries if name is not None]),
-                        )
-                        .replace("__PRET_PICKLE_FILE__", assets_dir + pickle_filename)
+                    remote_imports = str([n for _, n in entries if n is not None])
+                    html = (
+                        "<script>"
+                        f"window.PRET_PICKLE_FILE = '{assets_dir + pickle_filename}';"
+                        f"window.PRET_REMOTE_IMPORTS = {remote_imports};"
+                        "</script>" + html
                     )
                     self.assets.update(assets)
+                    self.entries.update(entries)
+
+        clear_shared_pickler()
+
+        return html
+
+    def on_post_page(self, output, page, config):
+        url_depth_count = page.url.count("/")
+        assets_dir = "../" * url_depth_count + "assets/"
+        webpack_trigger = '<script defer src="'
+        webpack_bundle = self.assets["index.html"].split(webpack_trigger)[1]
+        webpack_bundle = webpack_bundle.split('">')[0]
+        output = output.replace(
+            "<script pret-head-scripts></script>",
+            "".join(
+                '<script src="{}"></script>'.format(assets_dir + file)
+                for file, _ in self.entries
+            )
+            + f'<script src="{assets_dir + webpack_bundle}"></script>',
+        )
 
         return output
 
     def on_post_build(self, *, config: MkDocsConfig) -> None:
         for name, file in self.assets.items():
+            # index.html is only really used in standalone mode
+            # Here, we just use it to get the webpack bundle filename
+            if name == "index.html":
+                continue
             dest_path = Path(config["site_dir"]) / "assets" / name
             os.makedirs(dest_path.parent, exist_ok=True)
             if isinstance(file, Path):

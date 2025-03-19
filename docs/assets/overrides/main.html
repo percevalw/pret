@@ -7,9 +7,5 @@
 {% block scripts %}
   <!-- Add scripts that need to run before here -->
   {{ super() }}
-  <script>
-    window.PRET_PICKLE_FILE = '__PRET_PICKLE_FILE__';
-    window.PRET_REMOTE_IMPORTS = '__PRET_REMOTE_IMPORTS__';
-  </script>
   <script pret-head-scripts></script>
 {% endblock %}
