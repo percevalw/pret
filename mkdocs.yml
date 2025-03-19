@@ -43,7 +43,8 @@ nav:
         # - subscribing a component to the state
         # - mutating the state
         # - synchronizing with the backend
-      - tutorials/server-functions.md
+      - tutorials/tictactoe.md
+      - tutorials/interacting-with-the-server.md
         # - creating a server function
         # - calling a server function
   - Ecosystem:

@@ -620,3 +620,8 @@ def get_shared_pickler():
         pickler = PretPickler(**settings["pickler"])
         shared_pickler = weakref.ref(pickler)
     return shared_pickler()
+
+
+def clear_shared_pickler():
+    global shared_pickler
+    shared_pickler = None
