@@ -256,7 +256,7 @@ function getFunctionProps(name, sourceString, snakeCaseMapping) {
   }
   const jsDoc = ts.displayPartsToString(symbol.getDocumentationComment(checker));
   const paramNameToDoc = {};
-  const jsDocTags = type.symbol.getJsDocTags(checker);
+  const jsDocTags = type.symbol ? type.symbol.getJsDocTags(checker) : [];
   for (const tag of jsDocTags) {
     if (tag.name === "param") {
       // param name is the first part of the .text array field with kind `parameterName`
@@ -314,7 +314,7 @@ function getComponentProps(name, sourceString, snakeCaseMapping) {
     ? ts.displayPartsToString(symbol.getDocumentationComment(checker))
     : null;
   const paramNameToDoc = {};
-  const jsDocTags = type.symbol.getJsDocTags(checker);
+  const jsDocTags = type.symbol ? type.symbol.getJsDocTags(checker) : [];
   for (const tag of jsDocTags) {
     if (tag.name === "param") {
       // param name is the first part of the .text array field with kind `parameterName`
@@ -411,6 +411,7 @@ import * as MODULE from "${packagePath}";
 <MODULE. />;
 `;
   let imported = getImported(sourceString);
+  console.log(`Found ${imported.length} potential components & functions`);
   // Filter out non-react components
   sourceString = (`
 import React from "react";
