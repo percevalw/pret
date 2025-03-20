@@ -43,6 +43,11 @@ def on_files(files: mkdocs.structure.files.Files, config: mkdocs.config.Config):
     root = Path("pret")
     reference_nav = []
     for path in sorted(root.rglob("*.py")):
+        # We should investiguate how to support namespace subpackages
+        # in griffe, here:
+        # https://github.com/mkdocstrings/griffe/blob/main/src/_griffe/loader.py#L692
+        if "pret/ui" in str(path):
+            continue
         module_path = path.relative_to(root.parent).with_suffix("")
         doc_path = Path("reference") / path.relative_to(root.parent).with_suffix(".md")
         # full_doc_path = Path("docs/reference/") / doc_path
