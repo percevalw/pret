@@ -34,15 +34,49 @@ def build(
     mode: Union[bool, str, BundleMode] = True,
     dev: bool = False,
 ) -> Tuple[Dict[str, Union[str, Path]], List[Tuple[str, str]], str]:
-    if mode != BundleMode.FEDERATED:
-        npm = shutil.which("npm")
-        if not npm:
-            if mode == BundleMode.MONOLITHIC:
-                raise Exception("npm not found. Please install node to proceed.")
-            else:
-                mode = BundleMode.FEDERATED
-        elif mode != BundleMode.MONOLITHIC:
-            mode = BundleMode.MONOLITHIC
+    """
+    Build the Pret app, pooling all the assets and entry points from
+    the packages that were accessed for rendering.
+
+    Parameters
+    ----------
+    renderables: List[pret.render.Renderable]
+        The list of renderables to be bundled
+    static_dir: Union[str, Path]
+        The directory where the static files will be stored
+    build_dir: Union[str, Path]
+        The directory where the build files will be stored
+    mode: Union[bool, str, BundleMode]
+        The mode to use for bundling :
+
+        - "federated": The app will be bundled where the assets are
+          just copied from each package. This means that there may
+          be repeated assets in the final bundle.
+        - "monolithic": The app will be bundled where a consolidated
+          bundle is created with all the assets, using webpack.
+
+        By default, the mode is "federated".
+    dev: bool
+        Only used when mode is "monolithic". If True, the bundle will
+        be created in development mode. Otherwise, it will be created
+        in production mode.
+
+    Returns
+    -------
+    Tuple[Dict[str, Union[str, Path]], List[Tuple[str, str]], str]
+        A tuple containing the assets, entries and pickle filename
+    """
+    npm = None
+    if mode is True:
+        mode = BundleMode.FEDERATED
+        # npm = shutil.which("npm")
+        # if not npm:
+        #     if mode == BundleMode.MONOLITHIC:
+        #         raise Exception("npm not found. Please install node to proceed.")
+        #     else:
+        #         mode = BundleMode.FEDERATED
+        # elif mode != BundleMode.MONOLITHIC:
+        #     mode = BundleMode.MONOLITHIC
 
     if static_dir is None:
         static_dir = Path(tempfile.mkdtemp())
@@ -272,6 +306,34 @@ def run(
     dev: bool = True,
     serve: bool = True,
 ):
+    """
+    Serve the app, after building the app if necessary.
+
+    Parameters
+    ----------
+    renderable: pret.render.Renderable
+        The renderable object to be served
+    static_dir: Optional[Union[str, Path]]
+        The directory where the static files will be stored
+    build_dir: Optional[Union[str, Path]]
+        The directory where the build files will be stored
+    bundle: Union[bool, str, BundleMode]
+        The mode to use for bundling :
+
+        - "federated": The app will be bundled where the assets are
+          just copied from each package. This means that there may
+          be repeated assets in the final bundle.
+        - "monolithic": The app will be bundled where a consolidated
+          bundle is created with all the assets, using webpack.
+
+        By default, the mode is "federated".
+    dev: bool
+        Only used when mode is "monolithic". If True, the bundle will
+        be created in development mode. Otherwise, it will be created
+        in production mode.
+    serve: bool
+        Whether to serve the app after building it.
+    """
     with (
         build(
             [renderable],
