@@ -75,8 +75,6 @@ class PyCodePreprocessor(FencedBlockPreprocessor):
                         config["hl_lines"] = parse_hl_lines(m.group("hl_lines"))
                 # ----
                 code = m.group("code")
-                print("-----------------", lang, id, classes)
-                print(code)
 
                 if lang == "python" and "no-exec" not in classes:
                     self.code_blocks.append(

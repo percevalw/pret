@@ -1,4 +1,4 @@
-site_name: Pret
+site_name: PRET
 
 repo_url: https://github.com/percevalw/pret
 repo_name: percevalw/pret
@@ -30,7 +30,7 @@ theme:
     - announce.dismiss
 
 nav:
-  - index.md
+  - Getting Started: index.md
   - Tutorials:
       - Overview: tutorials/index.md
       - tutorials/create-your-first-component.md
@@ -47,17 +47,11 @@ nav:
       - tutorials/interacting-with-the-server.md
         # - creating a server function
         # - calling a server function
-  - Ecosystem:
-      - Overview: ecosystem/index.md
-      - ecosystem/basic.md
-      - ecosystem/joy.md
-      - ecosystem/metanno.md
-      - ecosystem/simple-dock.md
-  - Concepts:
-      - Overview: concepts/index.md
-      - concepts/running-in-python.md
-      - concepts/proxy-state.md
-      - concepts/running-your-app.md
+  # - Concepts:
+  #     - Overview: concepts/index.md
+  #     - concepts/running-in-python.md
+  #     - concepts/proxy-state.md
+  #     - concepts/running-your-app.md
   - Reference: reference/
   - changelog.md
 
@@ -75,6 +69,7 @@ extra:
 #       lang: fr
 
 extra_css:
+  - assets/stylesheets/override.css
   - assets/stylesheets/extra.css
   - assets/stylesheets/cards.css
   - assets/termynal/termynal.css
