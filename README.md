@@ -1,3 +1,6 @@
+[![Documentation](https://img.shields.io/github/actions/workflow/status/percevalw/pret/docs.yml?branch=main&label=docs&style=flat-square)](https://percevalw.github.io/pret/latest/)
+[![PyPI](https://img.shields.io/pypi/v/pret?color=blue&style=flat-square)](https://pypi.org/project/pret/)
+
 # PRET
 
 Pret is a library for building full-stack reactive user interfaces in Python, using React as a rendering engine.
