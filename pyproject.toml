@@ -27,6 +27,7 @@ pret = "pret.cli:app"
 dev = [
     "hatchling",
     "hatch-jupyter-builder",
+    "pret-joy",
 ]
 docs = [
     "mike~=1.1.2",
@@ -43,6 +44,7 @@ docs = [
     "pathspec>=0.11.1",  # required by vendored mkdocs-autorefs PR
     "astunparse",
     "griffe<0.39",
+    "beautifulsoup4",
     "jedi",
     "html5lib",
 ]
