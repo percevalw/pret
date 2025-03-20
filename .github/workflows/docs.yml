@@ -1,0 +1,38 @@
+name: Build documentation
+
+# suppress warning raised by https://github.com/jupyter/jupyter_core/pull/292
+env:
+  JUPYTER_PLATFORM_DIRS: "1"
+
+on:
+  push:
+    branches: main
+  pull_request:
+    branches: "*"
+
+jobs:
+  e2e-tests:
+    name: Linux
+    runs-on: ubuntu-latest
+
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/pw-browsers
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Base Setup
+        uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
+        with:
+          python_version: "3.10"
+          node_version: "20.x"
+          dependency_type: "standard"
+
+      - name: Install
+        run: |
+          pip install -e ".[dev,docs]"
+
+      - name: Build docs
+        run: |
+          mkdocs build
