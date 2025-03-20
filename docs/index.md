@@ -1,4 +1,4 @@
-# PRET
+# Getting started with Pret
 
 Pret is a library for building full-stack reactive user interfaces in Python, using React as a rendering engine.
 
@@ -30,7 +30,7 @@ Let's write a simple todo app that should:
 
 Copy and paste the following code in a notebook:
 
-```python
+```python { .render-with-pret }
 from pret import component, proxy, run, use_state, use_tracked
 from pret.ui.joy import Checkbox, Input, Stack, Typography
 
@@ -71,7 +71,8 @@ def TodoApp():
             placeholder="Add a todo",
         ),
         Typography(
-            f"Number of unfinished todo{plural}: {num_remaining}", level="body-md"
+            f"Number of unfinished todo{plural}: {num_remaining}",
+            sx={"minWidth": "230px"},  # just to avoid jittering when it's centered
         ),
         spacing=2,
         sx={"m": 1},
@@ -81,14 +82,12 @@ def TodoApp():
 TodoApp()
 ```
 
-![Demo Gif](./docs/assets/demo.gif)
-
 In comparison, the closest alternative using ipywidgets looks like the following snippet:
 
 <details>
 <summary>IPyWidget's implementation</summary>
 
-```python
+```python { .no-exec }
 import ipywidgets as widgets
 
 state = {

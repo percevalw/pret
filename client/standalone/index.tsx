@@ -80,6 +80,30 @@ async function loadBundle() {
   return { pyodide, bundle };
 }
 
+class ErrorBoundary extends React.Component {
+  state: { error: any };
+  props: { children: React.ReactElement };
+
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    // Update state so the next render will show the fallback UI.
+    return { error: error };
+  }
+
+  render() {
+    if (this.state.error) {
+      // You can render any custom fallback UI
+      return <pre>{this.state.error.toString()}</pre>;
+    }
+
+    return this.props.children;
+  }
+}
+
 const RenderBundle = ({ resource, chunkIdx }) => {
   try {
     const makeRenderable = resource.read(chunkIdx);
@@ -133,7 +157,7 @@ function renderPret() {
 
   const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
 
-  for (const chunk of pretChunks as any) {
+  for (let chunk of pretChunks as any) {
     const chunkIdx = parseInt(chunk.getAttribute("data-pret-chunk-idx"), 10);
 
     const resource = createResource(
@@ -155,9 +179,11 @@ function renderPret() {
     );
     ReactDOM.render(
       <React.StrictMode>
-        <Suspense fallback={<Loading />}>
-          <RenderBundle resource={resource} chunkIdx={chunkIdx} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<Loading />}>
+            <RenderBundle resource={resource} chunkIdx={chunkIdx} />
+          </Suspense>
+        </ErrorBoundary>
       </React.StrictMode>,
       chunk
     );

@@ -6,7 +6,7 @@ In the previous tutorial, we have seen how to compose a simple component from ot
 
 Why is state management hard in web development? The dynamic nature of user interfaces means multiple components must reflect and react to shared, constantly changing data without falling into the pitfalls of inefficient re-renders (e.g, you recompute the whole app UI whenever a single state variable changes), or convoluted data flows (e.g., state being passed through many layers of components that don’t even use it). Traditional approaches, like Redux, often introduce layers of boilerplate and require careful architecture to avoid performance issues and maintain clarity.
 
-There is also the issue of immutability: React relies on immutability : we cannot mutate the state directly (e.g., `state.todos[0]["done"] = True`), since React, and thus Pret, relies on shallow comparison to detect changes in the state. For instance, if `todos` is the same object, even though its content has changed, React will consider that the state has not changed and will not trigger a re-render.
+There is another issue of immutability: we cannot mutate the state directly (e.g., `state.todos[0]["done"] = True`), since React, and thus Pret, relies on shallow comparison to detect changes in the state. For instance, if `todos` is the same object, even though its content has changed, React will consider that the state has not changed and will not trigger a re-render.
 
 And if we take care of preventing direct mutations, changing the state can be cumbersome. For instance, if we want to change the `done` field of the first todo, we would have to do something like this:
 
@@ -18,7 +18,7 @@ new_todos[0] = {**todos[0], "done": True}
 # todos[i] == new_todos[i] for all i except 0
 ```
 
-Pret takes inspiration from `valtio` and provides a simple way to manage state in your components. A state object can be created an shared between components. Access to the states and mutations are recorded, such that the app knows which component should be re-rendered when a given part of the state changes.
+Pret takes inspiration from [valtio](https://github.com/pmndrs/valtio/) and provides a simple way to manage state in your components. A state object can be created an shared between components. Access to the states and mutations are recorded, such that the app knows which component should be re-rendered when a given part of the state changes.
 
 To create a state object, we use the `proxy` wrapper:
 
