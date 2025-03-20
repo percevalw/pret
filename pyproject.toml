@@ -24,6 +24,9 @@ pret = "pret.cli:app"
 
 # ----- Development configuration -----
 [project.optional-dependencies]
+joy = [
+    "pret-joy",
+]
 dev = [
     "hatchling",
     "hatch-jupyter-builder",

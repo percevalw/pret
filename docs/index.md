@@ -5,7 +5,7 @@ Pret is a library for building full-stack reactive user interfaces in Python, us
 ## Installation
 
 ```bash
-pip install "pret[joy]"  --user
+pip install pret pret-joy  --user
 ```
 
 ## Features
