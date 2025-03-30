@@ -148,19 +148,13 @@ export default class PretJupyterHandler {
 
     createComm = async (
         target_name: string,
-        model_id: string,
-        data?: JSONValue,
-        metadata?: JSONObject,
-        buffers?: (ArrayBuffer | ArrayBufferView)[]
     ): Promise<IComm> => {
         let kernel = this.context?.sessionContext.session?.kernel;
         if (!kernel) {
             throw new Error('No current kernel');
         }
-        let comm = kernel.createComm(target_name, model_id);
-        if (data || metadata) {
-            comm.open(data, metadata, buffers);
-        }
+        let comm = kernel.createComm(target_name);
+        comm.open();
         return comm;
     }
 
@@ -195,10 +189,8 @@ export default class PretJupyterHandler {
         const allCommIds = await this.getCommInfo();
         const relevantCommIds = Object.keys(allCommIds).filter(key => allCommIds[key]['target_name'] === this.commTargetName);
         console.info("Jupyter annotator comm ids", relevantCommIds, "(there should be at most one)");
-        if (relevantCommIds.length > 0) {
-            const comm = await this.createComm(
-                this.commTargetName,
-                relevantCommIds[0]);
+        if (relevantCommIds.length === 0) {
+            const comm = await this.createComm(this.commTargetName);
             this.handleCommOpen(comm);
         }
     };
