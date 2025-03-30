@@ -12,6 +12,7 @@ from typing import Any, Callable
 from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 
 from ipykernel.comm import Comm
+from ipywidgets.comm import get_comm_manager
 
 from pret.bridge import js, pyodide
 from pret.serialize import pickle_as
@@ -190,17 +191,24 @@ class JupyterServerManager(Manager):
     def __init__(self):
         super(JupyterServerManager, self).__init__()
         self.comm = None
+        get_comm_manager().register_target("pret", self.handle_comm_open)
         self.open()
 
     def open(self):
         """Open a comm to the frontend if one isn't already open."""
         if self.comm is None:
-            comm = Comm(
-                target_name="pret",
-                data={},
-            )
+            # It seems that if we create a comm to early, the client might
+            # receive the message before the "pret" comm target is registered
+            # in the front-end.
+            # This is why we also register the target in the constructor
+            # since the comm creation might come from the front-end instead.
+            comm = Comm(target_name="pret", data={})
             comm.on_msg(self.handle_comm_msg)
             self.comm = comm
+
+    def handle_comm_open(self, comm, msg):
+        self.comm = comm
+        self.comm.on_msg(self.handle_comm_msg)
 
     def close(self):
         """Close method.
