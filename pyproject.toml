@@ -102,9 +102,44 @@ build-kwargs = { "build_cmd" = "build", "npm" = ["jlpm"] }
 editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 
 [tool.hatch.build]
+dev-mode-dirs = ["."]
 artifacts = [
     "pret"
 ]
 
 [tool.hatch.build.targets.wheel.shared-data]
 "pret/js-extension" = "share/jupyter/labextensions/pret"
+
+# ----- Documentation -----
+[tool.hatch.envs.docs]
+python = "3.10"
+features = ["docs", "dev", "joy"]
+
+# ----- Testing -----
+[tool.hatch.envs.test]
+features = ["dev"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.7", "3.8", "3.9", "3.10"]
+jupyterlab = ["jupyterlab3", "jupyterlab4"]
+
+[tool.hatch.envs.test.overrides]
+matrix.jupyterlab.dependencies = [
+  { value = "jupyterlab>=4", if = ["jupyterlab4"] },
+  { value = "jupyterlab<4", if = ["jupyterlab3"] },
+]
+
+[tool.hatch.envs.test.scripts]
+jupyter = "sh tests/jupyter/run.sh"
+# Don't run this via hatch since it would run with all py versions
+# playwright-combine = "npx playwright merge-reports --reporter html ./blob-report"
+
+[tool.hatch.envs.ci]
+detached = true
+
+# TODO: if and when hatch allow, put this as a post-run script after test:jupyter
+[tool.hatch.envs.ci.scripts]
+combine-reports = [
+    "npx playwright merge-reports --reporter html ./blob-report",
+    "rm -rf ./blob-report"
+]
