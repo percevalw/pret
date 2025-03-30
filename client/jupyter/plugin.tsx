@@ -192,6 +192,7 @@ export function registerPretJupyterHandler(
         {
             safe: true,
             mimeTypes: [MIMETYPE],
+            // @ts-ignore
             createRenderer: options => new PretViewWidget(options, ensureManager())
         },
         0
