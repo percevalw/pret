@@ -24,6 +24,7 @@ import useSyncExternalStoreExports from 'use-sync-external-store/shim'
 
 import {PretViewData} from "./widget";
 
+// @ts-ignore
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 
 import DESERIALIZE_PY from "../deserialize.py";
