@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@jupyterlab/builder": "^3.6.3",
+    "@jupyterlab/galata": "4.5.8",
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
     "prettier": "^2.8.8",

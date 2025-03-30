@@ -11,8 +11,8 @@ from types import FunctionType
 from typing import Any, Callable
 from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 
+from comm import get_comm_manager
 from ipykernel.comm import Comm
-from ipywidgets.comm import get_comm_manager
 
 from pret.bridge import js, pyodide
 from pret.serialize import pickle_as
