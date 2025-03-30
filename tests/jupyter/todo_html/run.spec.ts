@@ -1,4 +1,12 @@
-import { expect, test } from "@jupyterlab/galata";
+let {expect, test} = require("@jupyterlab/galata");
+
+// JUPYTERLAB_VERSION is set in run.sh
+if (process.env.JUPYTERLAB_VERSION < "4") {
+  console.log("Using old galata to match JupyterLab 3");
+  const oldGalata = require("old-galata");
+  expect = oldGalata.expect;
+  test = oldGalata.test;
+}
 
 test.describe("Notebook Tests", () => {
   test("TodoHTML", async ({ page, tmpPath }) => {

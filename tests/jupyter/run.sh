@@ -1,18 +1,29 @@
+#!/bin/bash
+
 PID_PATH=/tmp/pret-jupyter-galata-app.pid
 # Check node >= 20 (i'm not sure this is
 # strictly necessary, but I think it will avoid a few headaches)
-NodeVersion=$(node --version)
-if [ "$(echo "${NodeVersion}\nv20" | sort -V|tail -1)" != "${NodeVersion}" ]; then
+NODE_VERSION=$(node --version)
+if [ "$(echo "${NODE_VERSION}\nv20" | sort -V|tail -1)" != "${NODE_VERSION}" ]; then
   echo "Node >= 20 is required"
   exit 1
 fi
+echo "Node version: $NODE_VERSION"
 
 # Used to put playwrigth reports in a separate folder
-export PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+echo "Python version: $PYTHON_VERSION"
+export PYTHON_VERSION
 
 # Start Jupyter Lab, save the PID to stop it later, and store logs
 export JUPYTERLAB_GALATA_ROOT_DIR=tests/jupyter
 jupyter --version
+
+JUPYTERLAB_VERSION=$(pip show jupyterlab -V | grep Version | cut -d' ' -f2)
+# Will be read in *.spec.ts files
+export JUPYTERLAB_VERSION
+
+echo "Starting Jupyter Lab"
 jupyter lab --config galata_config.py > /tmp/jupyter.log 2>&1 &
 echo $! > $PID_PATH
 
@@ -28,7 +39,8 @@ while ! grep -q "is running at:" /tmp/jupyter.log; do
 done
 
 # Run the tests
-jlpm playwright test tests/jupyter
+echo "Running playwright tests"
+yarn playwright test tests/jupyter
 
 # Store return code
 RET_CODE=$?

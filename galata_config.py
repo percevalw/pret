@@ -1,7 +1,10 @@
 # ruff: noqa: F821
 import getpass
 import os
+from pathlib import Path
 from tempfile import mkdtemp
+
+import jupyterlab
 
 # Test if we are running in a docker
 if getpass.getuser() == "jovyan":
@@ -10,11 +13,9 @@ if getpass.getuser() == "jovyan":
 c.ServerApp.port = 8889
 c.ServerApp.port_retries = 0
 c.ServerApp.open_browser = False
-# Add test helpers extension shipped with JupyterLab.
-# You can replace the following line by the two following one
-#   import jupyterlab
-#   c.LabServerApp.extra_labextensions_path = str(Path(jupyterlab.__file__).parent / "galata")  # noqa: E501
-# c.LabServerApp.extra_labextensions_path = str(Path(__file__).parent)
+c.LabServerApp.extra_labextensions_path = str(
+    Path(jupyterlab.__file__).parent / "galata"
+)  # noqa: E501
 
 c.LabApp.workspaces_dir = mkdtemp(prefix="galata-workspaces-")
 

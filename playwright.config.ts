@@ -8,7 +8,7 @@ export default defineConfig<{
     // jupyter url
     baseURL: "http://localhost:8889",
   },
-  timeout: 60_000000,
+  timeout: 120_000,
   reporter: [
     [
       "blob",
