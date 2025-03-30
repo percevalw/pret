@@ -120,8 +120,8 @@ features = ["docs", "dev", "joy"]
 features = ["dev"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.7", "3.8", "3.9", "3.10"]
 jupyterlab = ["jupyterlab3", "jupyterlab4"]
+python = ["3.7", "3.8", "3.9", "3.10"]
 
 [tool.hatch.envs.test.overrides]
 matrix.jupyterlab.dependencies = [
