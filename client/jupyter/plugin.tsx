@@ -70,12 +70,12 @@ function* getLinkedWidgetsFromApp(
     path: string,
 ) {
     const linkedViews = filter(
-        jupyterApp.shell.widgets("main"),
+        Array.from(jupyterApp.shell.widgets("main")),
         // @ts-ignore
         (w: Widget) => w.id.startsWith('LinkedOutputView-') && w.path === path);
     for (const view of toArray(linkedViews)) {
-        for (const outputs of toArray(view.children())) {
-            for (const output of toArray(outputs.children())) {
+        for (const outputs of view.children()) {
+            for (const output of outputs.children()) {
                 // TODO: do we need instanceof ?
                 if (output instanceof PretViewWidget) {
                     yield output;
@@ -462,7 +462,7 @@ async function activatePretExtension(
             const path = args.path as string | undefined | null;
             let index = args.index as number | undefined | null;
             if (path && index !== undefined && index !== null) {
-                current = docManager.findWidget(path, 'Notebook') as NotebookPanel;
+                current = docManager.findWidget(path, 'Notebook') as any;
                 if (!current) {
                     return;
                 }
@@ -532,7 +532,7 @@ const plugin: JupyterFrontEndPlugin<null> = {
     id: 'pret:plugin', // app
     requires: [
         IRenderMimeRegistry,  // rendermime
-        IDocumentManager,  // docManager
+        IDocumentManager as any,  // docManager
     ],
     optional: [
         INotebookTracker, // notebookTracker

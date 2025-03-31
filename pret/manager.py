@@ -11,25 +11,20 @@ from types import FunctionType
 from typing import Any, Callable
 from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 
-from comm import get_comm_manager
 from ipykernel.comm import Comm
 
 from pret.bridge import js, pyodide
 from pret.serialize import pickle_as
 
-val = None
-
 
 def get_formatted_exception():
     try:
-        global val
         exc_type, exc_obj, tb = sys.exc_info()
         f = tb.tb_frame
         lineno = tb.tb_lineno
         filename = f.f_code.co_filename
         linecache.checkcache(filename)
         line = linecache.getline(filename, lineno, f.f_globals)
-        val = traceback.format_exc()
         return f'Exception: {exc_obj}\nin "{line.strip()}"\nat {filename}:{lineno}'
     except Exception as e:
         return f"Exception: {e}"
@@ -191,7 +186,6 @@ class JupyterServerManager(Manager):
     def __init__(self):
         super(JupyterServerManager, self).__init__()
         self.comm = None
-        get_comm_manager().register_target("pret", self.handle_comm_open)
         self.open()
 
     def open(self):
@@ -205,6 +199,12 @@ class JupyterServerManager(Manager):
             comm = Comm(target_name="pret", data={})
             comm.on_msg(self.handle_comm_msg)
             self.comm = comm
+
+            comm_manager = getattr(comm.kernel, "comm_manager", None)
+            # LOG[0] += str(("comm_manager", comm_manager))
+            if comm_manager is None:
+                raise Exception("Could not find a comm_manager attached to the kernel")
+            comm_manager.register_target("pret", self.handle_comm_open)
 
     def handle_comm_open(self, comm, msg):
         self.comm = comm

@@ -9,7 +9,7 @@ license = { file = "LICENSE" }
 urls.homepage = "https://github.com/perceval/pret/"
 urls.repository = "https://github.com/perceval/pret/"
 dynamic = ["version"]
-requires-python = ">3.7.6,<4.0,!=3.8.1"
+requires-python = ">=3.7,<4.0,!=3.8.1"
 dependencies = [
     "ipykernel",
     "dill",
@@ -90,14 +90,14 @@ lint.fixable = ["E", "F", "W", "I"]
 path = "pret/__init__.py"
 
 [build-system]
-requires = ["hatchling", "jupyterlab<4.0.0"]
+requires = ["hatchling", "jupyterlab<4.0.0", "pip<=24.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.hooks.jupyter-builder]
 dependencies = ["hatch-jupyter-builder"]
 build-function = "hatch_jupyter_builder.npm_builder"
 install-pre-commit-hook = true
-optional-editable-build = true
+optional-editable-build = false
 build-kwargs = { "build_cmd" = "build", "npm" = ["jlpm"] }
 editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 
