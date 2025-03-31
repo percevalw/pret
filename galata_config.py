@@ -10,6 +10,7 @@ import jupyterlab
 if getpass.getuser() == "jovyan":
     c.ServerApp.ip = "0.0.0.0"  # noqa S104
 
+
 c.ServerApp.port = 8889
 c.ServerApp.port_retries = 0
 c.ServerApp.open_browser = False
@@ -23,6 +24,7 @@ c.ServerApp.root_dir = os.environ.get(
     "JUPYTERLAB_GALATA_ROOT_DIR", mkdtemp(prefix="galata-test-")
 )
 c.IdentityProvider.token = ""
+c.ServerApp.token = ""  # For python 3.7, otherwise IdentityProvider.token is used
 c.ServerApp.password = ""
 c.ServerApp.disable_check_xsrf = True
 c.LabApp.expose_app_in_browser = True

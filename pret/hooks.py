@@ -5,12 +5,13 @@ from typing import (
     List,
     NewType,
     Optional,
-    Protocol,
     Tuple,
     TypeVar,
     Union,
     overload,
 )
+
+from typing_extensions import Protocol
 
 from pret.state import (
     DictPretProxy,

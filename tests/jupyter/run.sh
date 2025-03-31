@@ -18,6 +18,10 @@ export PYTHON_VERSION
 # Start Jupyter Lab, save the PID to stop it later, and store logs
 export JUPYTERLAB_GALATA_ROOT_DIR=tests/jupyter
 jupyter --version
+jupyter labextension list
+hatch --version
+echo "Pret installed package"
+pip show -f pret
 
 JUPYTERLAB_VERSION=$(pip show jupyterlab -V | grep Version | cut -d' ' -f2)
 # Will be read in *.spec.ts files

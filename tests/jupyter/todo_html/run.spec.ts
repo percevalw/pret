@@ -8,6 +8,17 @@ if (process.env.JUPYTERLAB_VERSION < "4") {
   test = oldGalata.test;
 }
 
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    // Get a unique place for the screenshot.
+    const screenshotPath = testInfo.outputPath(`failure.png`);
+    // Add it to the report.
+    testInfo.attachments.push({ name: 'screenshot', path: screenshotPath, contentType: 'image/png' });
+    // Take the screenshot itself.
+    await page.screenshot({ path: screenshotPath, timeout: 1000 });
+  }
+});
+
 test.describe("Notebook Tests", () => {
   test("TodoHTML", async ({ page, tmpPath }) => {
     const fileName = "todo_html/TodoHTML.ipynb";
