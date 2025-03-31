@@ -28,11 +28,79 @@ jobs:
   test:
     name: Run tests
     timeout-minutes: 60
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: [ "3.7", "3.8", "3.9", "3.10" ]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # - name: Base Setup
+      #   uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
+      #   with:
+      #     python_version: ${{ matrix.python-version }}
+      #     node_version: "20.x"
+      #     dependency_type: "standard"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Install Node dependencies
+        run: yarn install
+
+      - name: Install Playwright Browsers
+        run: yarn playwright install --with-deps
+
+      - name: Install project
+        run: pip install -e ".[dev]"
+
+      # TODO: replace with hatch run tests when py37 is supported
+      # run: hatch run test.py${{ matrix.python-version }}-jupyterlab3:jupyter
+
+      - name: Run tests for JupyterLab 4
+        if: ${{ matrix.python-version != '3.7' }}
+        run: |
+          pip install "jupyterlab>=4"
+          sh tests/jupyter/run.sh
+
+      - name: Run tests for JupyterLab 3
+        run: |
+          pip install "jupyterlab<4"
+          sh tests/jupyter/run.sh
+
+      - name: Upload blob report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: blob-report-${{ matrix.python-version }}
+          path: blob-report/
+          retention-days: 7
+
+  combine-report:
+    name: Generate combined report
+    needs: test
+    runs-on: ubuntu-22.04
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all blob-reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-*
+          path: blob-report/
+          merge-multiple: true
 
       - name: Base Setup
         uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
@@ -40,15 +108,6 @@ jobs:
           python_version: "3.10"
           node_version: "20.x"
           dependency_type: "standard"
-
-      - name: Install Node dependencies
-        run: npm install -g yarn && yarn
-
-      - name: Install Playwright Browsers
-        run: yarn playwright install --with-deps
-
-      - name: Run tests
-        run: hatch run test:jupyter
 
       # Even if the tests fail, we want to generate the report
       - name: Generate Playwright report
@@ -68,7 +127,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only for PR
     if:
-        github.event_name == 'pull_request'
+      github.event_name == 'pull_request'
 
     steps:
       - name: Checkout
