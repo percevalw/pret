@@ -95,7 +95,7 @@ class ProxyState:
     def add_listener(self, listener: Callable):
         self.listeners.append(listener)
 
-        # If this is the first listener, add prop listeners to all child proxy states
+        # If this is the first listener, add prop listeners to all child proxy states.
         # Otherwise, this means that the child proxy states already have prop listeners
         # that will trigger us to update, so we don't need to add these again
         if len(self.listeners) == 1:
@@ -385,7 +385,25 @@ class TrackedDictPretProxy(dict):
         self._children.add(res)
         return res
 
-    # TODO: add __len__ and other data getters
+    def get(self, item, default=None):
+        if id(self._base_object) not in self._affected:
+            self_affected = self._affected[id(self._base_object)] = Affected(
+                self._base_object
+            )
+        else:
+            self_affected = self._affected[id(self._base_object)]
+        self_affected.getitem_keys.add(item)
+
+        if super().__contains__(item):
+            res = tracked(
+                super().__getitem__(item),
+                self._affected,
+                self._proxy_object[item],
+            )
+            self._children.add(res)
+        else:
+            res = default
+        return res
 
     def __setitem__(self, key, value):
         self._proxy_object[key] = value
@@ -683,7 +701,13 @@ def make_subscriber(subscribe, proxy_object, callback, notify_in_sync=False):
     return _subscribe
 
 
-def subscribe(proxy_object, callback, notify_in_sync=False):
+def subscribe(proxy_object, callback=None, notify_in_sync=False):
+    if callback is None:
+
+        def decorator(func):
+            return subscribe(proxy_object, func, notify_in_sync)
+
+        return decorator
     proxy_state = proxy_state_map.get(proxy_object)
     if not proxy_state:
         raise ValueError("Please use proxy object")
@@ -726,6 +750,7 @@ def subscribe(proxy_object, callback, notify_in_sync=False):
 
 def snapshot(value):
     if is_proxy(value):
+        value = get_untracked(value)
         proxy_state = proxy_state_map[value]
         return proxy_state.get_snapshot()
     return value

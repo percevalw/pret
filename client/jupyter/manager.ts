@@ -106,7 +106,7 @@ export default class PretJupyterHandler {
             return;
         }
         this.isStartingPython = true;
-        loadPyodide({indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/"}).then(async (pyodide) => {
+        loadPyodide({indexURL: "http://0.0.0.0:8000/"}).then(async (pyodide) => {
             this.pyodide = pyodide;
             await pyodide.loadPackage("micropip");
             const micropip = pyodide.pyimport("micropip");

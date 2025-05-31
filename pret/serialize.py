@@ -1,11 +1,16 @@
 import fnmatch
 import importlib
+import importlib.machinery as _machinery
+import importlib.metadata as md
+import importlib.util
 import io
 import sys
+import sysconfig
 import uuid
 import warnings
 import weakref
 from inspect import iscode, isfunction, ismethod
+from pathlib import Path
 from pickle import DICT, EMPTY_DICT, MARK
 from typing import Any
 from weakref import WeakKeyDictionary, WeakSet, WeakValueDictionary
@@ -173,9 +178,97 @@ def filter_patterns(patterns, query):
     return any(fnmatch.fnmatch(query, p) for p in patterns)
 
 
+def _is_stdlib_root(pkg: str) -> bool:
+    """
+    Return True when *pkg* (the **top-level** part of a dotted name)
+    belongs to the Python standard library.
+    """
+    # Python ≥ 3.10 gives the whole list for free
+    if hasattr(sys, "stdlib_module_names"):
+        return pkg in sys.stdlib_module_names
+
+    # For ≤ 3.9 we fall back to the disk location of the stdlib
+    stdlib_dir = Path(sysconfig.get_paths()["stdlib"]).resolve()
+    try:
+        spec = importlib.util.find_spec(pkg)
+        return (
+            spec
+            and spec.origin
+            and Path(spec.origin).resolve().is_relative_to(stdlib_dir)
+        )
+    except AttributeError:  # is_relative_to needs ≥ 3.9
+        try:
+            Path(spec.origin).resolve().relative_to(stdlib_dir)
+            return True
+        except ValueError:
+            return False
+
+
+def _belongs_to_distribution(pkg: str, origin: Path) -> bool:
+    """
+    Return True if *origin* lies inside the distribution that owns *pkg*,
+    otherwise False (this covers *editable* installs too).
+    """
+    try:
+        dist = md.distribution(pkg)
+    except md.PackageNotFoundError:
+        return False
+
+    dist_root = Path(dist.locate_file("")).resolve()
+    try:
+        return origin.is_relative_to(dist_root)
+    except AttributeError:  # < 3.9 fallback
+        try:
+            origin.relative_to(dist_root)
+            return True
+        except ValueError:
+            return False
+
+
+def classify_module(dotted_name: str) -> str:
+    """
+    Classify *dotted_name* as one of:
+      * 'built-in'  – compiled into the interpreter
+      * 'stdlib'    – shipped with Python on disk
+      * 'installed' – provided by an installed distribution
+      * 'local'     – anything else found on ``sys.path``
+      * 'not found' – import machinery could not resolve the name
+    """
+    try:
+        spec = importlib.util.find_spec(dotted_name)
+    except ValueError:
+        return "not found"
+
+    if spec is None:
+        return "not found"
+
+    # ---------------------------------------------------------------- built-in
+    if spec.origin in (None, "built-in") or isinstance(
+        spec.loader, _machinery.BuiltinImporter
+    ):
+        return "built-in"
+
+    origin = Path(spec.origin).resolve()
+    pkg_root = dotted_name.partition(".")[0]
+
+    # ------------------------------------------------------------- stdlib check
+    if _is_stdlib_root(pkg_root):
+        return "stdlib"
+
+    # ----------------------------------------------------------- installed pkg
+    if _belongs_to_distribution(pkg_root, origin):
+        return "installed"
+
+    # ----------------------------------------------------------------- project
+    return "local"
+
+
 def _locate_function(obj, pickler=None):
     """Adapter for dill._dill._locate_function"""
     module_name = getattr(obj, "__module__", None)
+
+    # Determine package from python installs metadata tools
+    is_local_module = classify_module(module_name) in ("local", "not found")
 
     if (
         module_name is None
@@ -184,6 +277,10 @@ def _locate_function(obj, pickler=None):
         and is_dill(pickler, child=False)
         and pickler._session
         and module_name == pickler._main.__name__
+        or (
+            is_local_module
+            and not filter_patterns(pickler.non_pickled_modules, module_name)
+        )
     ):
         return False
     if hasattr(obj, "__qualname__"):
@@ -323,6 +420,7 @@ def save_function(pickler, obj):
         logger.trace(pickler, "F2: %s", obj)
         name = getattr(obj, "__qualname__", getattr(obj, "__name__", None))
         StockPickler.save_global(pickler, obj, name=name)
+        print("Will import", name)
         logger.trace(pickler, "# F2")
     return
 
@@ -576,6 +674,7 @@ class PretPickler(Pickler):
         *args,
         no_recurse_in=None,
         pickled_modules=(),
+        non_pickled_modules=(),
         save_code_as_source=False,
         **kwds,
     ):
@@ -588,6 +687,7 @@ class PretPickler(Pickler):
 
         self.no_recurse_in = no_recurse_in or {}
         self.pickled_modules = pickled_modules
+        self.non_pickled_modules = non_pickled_modules
         self.save_code_as_source = save_code_as_source
 
         self.modules_dict = {}
