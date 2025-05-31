@@ -1,12 +1,16 @@
 import asyncio
 import functools
+import gc
+import inspect
 import sys
+import traceback
 import weakref
-from types import ModuleType
+from types import FunctionType, ModuleType
 from weakref import WeakKeyDictionary
 
 from pret.serialize import GlobalRef, pickle_as
 
+cache = {}
 js = ModuleType("js", None)
 pyodide = ModuleType("pyodide", None)
 sys.modules["js"] = js
@@ -23,7 +27,7 @@ def weak_cached(fn):
         try:
             value = weak_cache[obj]
         except TypeError:
-            value = fn(obj)
+            value = cached_apply(obj, fn)
         except KeyError:
             value = fn(obj)
             try:
@@ -35,16 +39,104 @@ def weak_cached(fn):
     return wrapped
 
 
+def cached_apply(x, fn):
+    idx = id(x)
+    try:
+        return cache[idx][1]
+    except KeyError:
+        pass
+    y = fn(x)
+    cache[idx] = (x, y)
+    return y
+
+
+def cached(fn):
+    def wrap(x):
+        return cached_apply(x, fn)
+
+    return wrap
+
+
+def wrap_function(prop):
+    def wrapped(*args, **kwargs):
+        args = [
+            arg.to_py() if isinstance(arg, pyodide.ffi.JsProxy) else arg for arg in args
+        ]
+        kwargs = {
+            kw: arg.to_py() if isinstance(arg, pyodide.ffi.JsProxy) else arg
+            for kw, arg in kwargs
+        }
+        return prop(*args, **kwargs)
+
+    if inspect.iscoroutinefunction(prop):
+        wrapped = auto_start_async(wrapped)
+
+    return pyodide.ffi.create_proxy(wrapped)
+
+
+def prop_eager_converter(obj, convert, cache):
+    if isinstance(obj, FunctionType):
+        return cached_apply(obj, wrap_function)
+    else:
+        return cached_apply(obj, convert)
+
+
 @weak_cached
+def cached_prop_to_js(obj):
+    if isinstance(obj, FunctionType):
+        return wrap_function(obj)
+    try:
+        return pyodide.ffi.to_js(
+            obj,
+            depth=-1,
+            dict_converter=js.Object.fromEntries,
+            # eager_converter=prop_eager_converter,
+        )
+    except:
+        traceback.print_exc()
+        raise
+
+
+def simple_eager_converter(obj, convert, cache):
+    return cached_apply(obj, convert)
+
+
+@weak_cached
+def cached_to_js(obj):
+    return pyodide.ffi.to_js(
+        obj,
+        depth=-1,
+        dict_converter=js.Object.fromEntries,
+        eager_converter=simple_eager_converter,
+    )
+
+
 def cached_create_proxy(obj):
-    if isinstance(obj, (int, float, str, bool)) or obj is None:
-        return obj
-    return pyodide.ffi.create_proxy(obj)
+    return cached_apply(obj, pyodide.ffi.create_proxy)
 
 
-@weak_cached
-def cached_deep_to_js(obj):
-    return pyodide.ffi.to_js(obj, depth=-1)
+def gc_pret_callback(phase, info):
+    if phase != "start":
+        return
+
+    ids_to_delete = []
+    for entry in cache.items():
+        # refcount <= 2 because:
+        # - one is for the tuple (x, y) entry's value
+        # - one is for temp passed parameter to sys.getrefcount
+        refcount = sys.getrefcount(entry[1][0])
+        # print("Ref count for", entry[0], "is", refcount, flush=True)
+        if refcount <= 2:
+            # print("Deleting", entry[0], flush=True)
+
+            ids_to_delete.append(entry[0])
+    for idx in ids_to_delete:
+        del cache[idx]
+
+
+# just in case we rerun this
+gc.callbacks[:] = [fn for fn in gc.callbacks if fn.__name__ != "gc_pret_callback"]
+gc.callbacks.append(gc_pret_callback)
 
 
 def make_create_proxy():

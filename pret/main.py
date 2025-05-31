@@ -305,6 +305,7 @@ def run(
     bundle: Union[bool, str, BundleMode] = True,
     dev: bool = True,
     serve: bool = True,
+    port: int = 5000,
 ):
     """
     Serve the app, after building the app if necessary.
@@ -333,7 +334,10 @@ def run(
         in production mode.
     serve: bool
         Whether to serve the app after building it.
+    port: int
+        The port to use for serving the app.
     """
+
     with (
         build(
             [renderable],
@@ -344,6 +348,7 @@ def run(
         if bundle
         else contextlib.nullcontext({"*": Path(static_dir)})
     ) as (assets, entries, pickle_filename):
+        app = make_app(assets)
         if serve:
-            app = make_app(assets)
-            app.run(debug=dev, port=5001)
+            app.run(debug=dev, port=port)
+        return app
