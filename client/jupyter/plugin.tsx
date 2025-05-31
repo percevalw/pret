@@ -24,6 +24,7 @@ import PretJupyterHandler from "./manager";
 import {PretViewWidget} from "./widget";
 
 import "./keep-hidden-cell-output";
+import "./style.css";
 
 import '@pret-globals';
 
