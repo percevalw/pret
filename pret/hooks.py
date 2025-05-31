@@ -13,6 +13,7 @@ from typing import (
 
 from typing_extensions import Protocol
 
+from pret.bridge import cached_to_js
 from pret.state import (
     DictPretProxy,
     ListPretProxy,
@@ -75,13 +76,13 @@ def use_state(
     return value.unwrap(), set_proxy_value
 
 
-FunctionReturnType = TypeVar("FunctionReturnType")
+T = TypeVar("T")
 
 
 def use_memo(
-    fn: "Callable[[], FunctionReturnType]",
+    fn: "Callable[[], T]",
     dependencies: "List",
-) -> "FunctionReturnType":
+) -> "T":
     """
     Returns a memoized value, computed from the provided function.
     The function will only be re-executed if any of the dependencies change.
@@ -95,7 +96,7 @@ def use_memo(
 
     Parameters
     ----------
-    fn: Callable[[], Any]
+    fn: Callable[[], T]
         The function to run to compute the memoized value
     dependencies: List
         The dependencies that will trigger a re-execution of the function
@@ -105,7 +106,16 @@ def use_memo(
     FunctionReturnType
         The value
     """
-    return js.React.useMemo(fn, dependencies)
+
+    def wrapper():
+        return pyodide.ffi.create_proxy(fn())
+
+    return js.React.useMemo(
+        wrapper,
+        pyodide.ffi.to_js([id(d) for d in dependencies])
+        if dependencies is not None
+        else None,
+    ).unwrap()
 
 
 RefValueType = TypeVar("RefValueType")
@@ -168,7 +178,7 @@ def use_callback(
     return js.React.useCallback(callback, dependencies)
 
 
-def use_effect(effect: "Callable", dependencies: "Optional[List]" = None):
+def use_effect(effect: "Callable" = None, dependencies: "Optional[List]" = None):
     """
     The `useEffect` hook allows you to perform side effects in function components.
     Side effects can include data fetching, subscriptions, manually changing the DOM,
@@ -193,6 +203,12 @@ def use_effect(effect: "Callable", dependencies: "Optional[List]" = None):
     dependencies: Optional[List]
         An optional array of dependencies that determines when the effect runs.
     """
+    if effect is None:
+
+        def decorator(func):
+            return use_effect(func, dependencies)
+
+        return decorator
     effect = pyodide.ffi.create_once_callable(effect)
     return js.React.useEffect(effect, pyodide.ffi.to_js(dependencies))
 
@@ -227,7 +243,7 @@ def use_tracked(
 ) -> "TrackedListPretProxy": ...
 
 
-def use_tracked(proxy_object):
+def use_tracked(proxy_object, name=None):
     """
     This hook is used to track the access made on a proxy object.
     You can also use the returned object to change the proxy object.
@@ -247,6 +263,10 @@ def use_tracked(proxy_object):
         raise ValueError("use_tracked can only be used with proxy objects")
     last_snapshot = js.React.useRef(None)
     last_affected = js.React.useRef(None)
+
+    # use to keep a reference on the tracked value.
+    # TODO: handle destruction of created proxies everywhere in the app
+    last_tracked = js.React.useRef(None)
     in_render = True
 
     def external_store_subscribe(callback):
@@ -256,7 +276,8 @@ def use_tracked(proxy_object):
     def external_store_get_snapshot():
         try:
             next_snapshot = snapshot(proxy_object)
-        except KeyError:
+        except KeyError as e:
+            print("Got key error !", e)
             return js.undefined
         if not in_render and last_snapshot.current and last_affected.current:
             if not is_changed(
@@ -288,13 +309,16 @@ def use_tracked(proxy_object):
     in_render = False
     curr_affected = dict()
 
-    def side_effect():
-        last_snapshot.current = curr_snapshot
-        last_affected.current = curr_affected
+    # def side_effect():
 
     # No dependencies, will run once after each render -> create_once_callable
-    js.React.useEffect(pyodide.ffi.create_once_callable(side_effect))
-    return tracked(curr_snapshot["wrapped"], curr_affected, proxy_object)
+    # js.React.useEffect(pyodide.ffi.create_once_callable(side_effect))
+    res = tracked(curr_snapshot["wrapped"], curr_affected, proxy_object)
+
+    last_snapshot.current = curr_snapshot
+    last_affected.current = curr_affected
+    last_tracked.current = res
+    return res
 
 
 def use_event_callback(callback: "CallbackType"):
@@ -318,17 +342,15 @@ def use_event_callback(callback: "CallbackType"):
     CallbackType
         The wrapped callback function
     """
-    ref = js.React.useRef(callback)
-
-    def side_effect():
-        ref.current = callback
-
-    once_callable = pyodide.ffi.create_once_callable(side_effect)
-    once_callable.displayName = "use_event_callback"
-    js.React.useEffect(once_callable)
 
     @functools.wraps(callback)
-    def wrapped(*args, **kwargs):
-        return ref.current(*args, **kwargs)
+    def wrapper(*args, **kwargs):
+        return callback_ref.current(*args, **kwargs)
 
-    return wrapped
+    callback = cached_to_js(callback)
+
+    wrapper_ref = js.React.useRef(pyodide.ffi.create_proxy(wrapper))
+    callback_ref = js.React.useRef(callback)
+    callback_ref.current = callback
+
+    return wrapper_ref.current.unwrap()
