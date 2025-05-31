@@ -1,0 +1,4 @@
+/* Otherwise, when detaching the widget and height is only set via min-height, the view is collapsed */
+.lm-Widget.lm-Panel.jp-OutputArea-child.jp-OutputArea-executeResult:has(.pret-view) {
+    height: 100%;
+}
