@@ -204,6 +204,9 @@ a.discrete-link {
     display: flex;
     overflow-x: auto;
     position: relative;
+    /* To prevent a weird bug, likely related to overflow and flexbox, adding scrollbars to the div */
+    padding: 1px;
+    margin: -1px;
 }
 
 .pret-code-snippet-view-container .metanno-table {
