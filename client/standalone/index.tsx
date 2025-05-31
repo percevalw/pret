@@ -59,7 +59,7 @@ let pyodidePromise = null;
 async function loadBundle() {
   if (!pyodidePromise) {
     pyodidePromise = loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.28.0-alpha.2/full/",
     });
   }
 
