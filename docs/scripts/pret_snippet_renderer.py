@@ -1,5 +1,6 @@
 import ast
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -224,9 +225,9 @@ class PretSnippetRendererPlugin(BasePlugin):
     def on_post_page(self, output, page, config):
         url_depth_count = page.url.count("/")
         assets_dir = "../" * url_depth_count + "assets/"
-        webpack_trigger = '<script defer src="'
-        webpack_bundle = self.assets["index.html"].split(webpack_trigger)[1]
-        webpack_bundle = webpack_bundle.split('">')[0]
+        webpack_bundle = re.search(
+            '<script defer[^\n]*? src="(.*?)">', self.assets["index.html"]
+        ).group(1)
         output = output.replace(
             "<script pret-head-scripts></script>",
             "".join(

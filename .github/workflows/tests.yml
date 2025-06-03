@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+
 jobs:
   linting:
     name: Linting
@@ -125,9 +128,7 @@ jobs:
   docs:
     name: Test documentation
     runs-on: ubuntu-latest
-    # Only for PR
-    if:
-      github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -140,5 +141,61 @@ jobs:
           node_version: "20.x"
           dependency_type: "standard"
 
+      - name: Set up Git
+        run: |
+          git config user.name ${{ github.actor }}
+          git config user.email ${{ github.actor }}@users.noreply.github.com
+          echo Current branch: $BRANCH_NAME
+
       - name: Build docs
-        run: hatch -e docs run mkdocs build
+        run: |
+          hatch -e docs run mike deploy --no-redirect --rebase --update-aliases $BRANCH_NAME latest
+          hatch -e docs run mike set-default $BRANCH_NAME
+
+      - name: Put content of gh-pages to public folder
+        run: rm -rf public && mkdir public && git archive gh-pages | tar -x -C ./public/
+
+      - name: Set up Vercel
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Create new vercel project linked to this branch
+        run: vercel project add pret-$BRANCH_NAME --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Link public folder to the (maybe) new vercel project
+        run: vercel link --cwd public --project pret-$BRANCH_NAME --yes --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to Vercel
+        run: vercel deploy public/ --yes --token=${{ secrets.VERCEL_TOKEN }} --archive=tgz --prod > deployment-url.txt
+
+      - name: Post the documentation link
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          slugify () {
+              echo "$1" | iconv -c -t ascii//TRANSLIT | sed -E 's/[^a-zA-Z0-9-]+//g' | tr A-Z a-z
+          }
+          RAW_PROJECT_NAME="pret-$BRANCH_NAME"
+          URL=https://$(slugify "$RAW_PROJECT_NAME").vercel.app/
+          COMMENT_BODY="## Docs preview URL\n\n$URL\n\n"
+          HEADER="Authorization: token $GITHUB_TOKEN"
+          PR_COMMENTS_URL="https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments"
+
+          # Fetch existing comments to find if one from this workflow already exists
+          COMMENTS=$(curl -s -H "$HEADER" "$PR_COMMENTS_URL")
+          COMMENT_ID=$(echo "$COMMENTS" | jq -r '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("## Docs preview URL"))) | .id')
+
+          # Check if we have a comment ID, if so, update it, otherwise create a new one
+          if [[ "$COMMENT_ID" ]]; then
+            # Update existing comment
+            curl -s -X PATCH -H "$HEADER" -H "Content-Type: application/json" -d "{\"body\": \"$COMMENT_BODY\"}" "https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID"
+          else
+            # Post new comment
+            curl -s -X POST -H "$HEADER" -H "Content-Type: application/json" -d "{\"body\": \"$COMMENT_BODY\"}" "$PR_COMMENTS_URL"
+          fi
+
+          if [ $status -ne 0 ]; then
+            exit $status
+          fi
