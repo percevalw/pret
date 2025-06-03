@@ -2,8 +2,6 @@ import "regenerator-runtime/runtime";
 import React from "react";
 
 // @ts-ignore
-import {JSONObject, JSONValue, UUID} from "@lumino/coreutils";
-// @ts-ignore
 import {DocumentRegistry} from "@jupyterlab/docregistry";
 // @ts-ignore
 import {IComm, IKernelConnection} from "@jupyterlab/services/lib/kernel/kernel";
@@ -16,10 +14,6 @@ import {ISessionContext} from "@jupyterlab/apputils/lib/sessioncontext";
 // @ts-ignore
 import * as KernelMessage from "@jupyterlab/services/lib/kernel/messages";
 
-import {loadPyodide, PyodideInterface} from "pyodide";
-// @ts-ignore
-import {PyProxy} from "pyodide/ffi";
-
 import useSyncExternalStoreExports from 'use-sync-external-store/shim'
 
 import {PretViewData} from "./widget";
@@ -27,9 +21,7 @@ import {PretViewData} from "./widget";
 // @ts-ignore
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 
-import DESERIALIZE_PY from "../deserialize.py";
-
-(window as any).React = React;
+import { makeLoadApp } from "../appLoader";
 
 export default class PretJupyterHandler {
     get readyResolve(): any {
@@ -49,10 +41,8 @@ export default class PretJupyterHandler {
 
     // Lock promise to chain events, and avoid concurrent state access
     // Each event calls .then on this promise and replaces it to queue itself
-    private pyodide: PyodideInterface;
-    private unpack: (data: string, unpickler_id: string, chunk_idx: number) => [PyProxy, PyProxy];
-    private pyManager: PyProxy;
-    private isStartingPython: boolean;
+    private unpack: (data: any, unpickler_id: string, chunk_idx: number) => [any, any];
+    private appManager: any;
     public ready: Promise<any>;
     private _readyResolve: (value?: any) => void;
     private _readyReject: (reason?: any) => void;
@@ -62,13 +52,13 @@ export default class PretJupyterHandler {
         this.commTargetName = 'pret';
         this.context = context;
         this.comm = null;
-        this.pyodide = null;
-        this.unpack = null;
-        this.pyManager = null;
+        this.unpack = makeLoadApp();
+        this.appManager = null;
         this.ready = new Promise((resolve, reject) => {
             this._readyResolve = resolve;
             this._readyReject = reject;
         });
+        this._readyResolve();
 
         // https://github.com/jupyter-widgets/ipywidgets/commit/5b922f23e54f3906ed9578747474176396203238
         context?.sessionContext.kernelChanged.connect((
@@ -98,34 +88,6 @@ export default class PretJupyterHandler {
         this.settings = settings;
     }
 
-    startPython = () => {
-        if (this.unpack) {
-            return;
-        }
-        if (this.isStartingPython) {
-            return;
-        }
-        this.isStartingPython = true;
-        loadPyodide({indexURL: "http://0.0.0.0:8000/"}).then(async (pyodide) => {
-            this.pyodide = pyodide;
-            await pyodide.loadPackage("micropip");
-            const micropip = pyodide.pyimport("micropip");
-            await micropip.install("dill");
-            this.unpack = await pyodide.runPythonAsync(DESERIALIZE_PY);
-            this.isStartingPython = false;
-        }).then(
-            () => {
-                // We don't need to wait for the comm to load the widgets
-                //if (this.comm) {
-                this._readyResolve();
-                //}
-            }
-        ).catch((e) => {
-            console.error(e);
-            this._readyReject(e);
-        });
-    }
-
     sendMessage = (method: string, data: any) => {
         this.comm.send({
             'method': method,
@@ -137,9 +99,7 @@ export default class PretJupyterHandler {
         console.info("Comm is open", comm.commId)
         this.comm = comm;
         this.comm.onMsg = this.handleCommMessage;
-        if (this.unpack) {
-            this._readyResolve();
-        }
+        this._readyResolve();
     };
 
     /**
@@ -199,7 +159,7 @@ export default class PretJupyterHandler {
     handleCommMessage = (msg: KernelMessage.ICommMsgMsg) => {
         try {
             const {method, data} = msg.content.data as { method: string, data: any };
-            this.pyManager.handle_message(method, this.pyodide.toPy(data));
+            this.appManager.handle_message(method, data);
         } catch (e) {
             console.error("Error during comm message reception", e);
         }
@@ -237,13 +197,13 @@ export default class PretJupyterHandler {
     };
 
     /**
-     * Deserialize a view data to turn it into a callable python function, via pyodide.
+     * Deserialize a view data to turn it into a callable js function
      * @param view_data
      */
-    unpackView({serialized, unpickler_id, chunk_idx}: PretViewData): any {
-        const [renderable, manager] = this.unpack(serialized, unpickler_id, chunk_idx)
-        this.pyManager = manager;
-        this.pyManager.register_environment_handler(this);
+    unpackView({serialized, marshaler_id, chunk_idx}: PretViewData): any {
+        const [renderable, manager] = this.unpack(serialized, marshaler_id, chunk_idx)
+        this.appManager = manager;
+        this.appManager.register_environment_handler(this);
         return renderable;
     }
 }

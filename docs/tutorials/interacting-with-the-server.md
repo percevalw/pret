@@ -4,33 +4,35 @@ In this tutorial, we'll see the difference between server-side and client-side c
 
 ## Client-side environment
 
-When you build a Pret app, you are building a web application that will run in the browser. By default, in Pret, any function used in a rendered component will be sent to the browser and executed with Pyodide. While this is a powerful
+When you build a Pret app, you are building a web application that will run in the browser. By default, in Pret, any function used in a rendered component will be transpiled into javascript (including its scoped variables), then sent to the browser for execution. While this is a powerful
 feature, this means that this function doesn't have access to your server-side environment, such as your database, filesystem or computing resources.
+Moreover, the transpilation process has some limitations: you won't be able to import modules beside the ones provided by Pret, and you won't be able to use some Python features such as decorators, context managers, multithreading, etc.
 
 For instance, let's take a look at the following component:
 
-```{ .python .render-with-pret }
-from pret import component
+```python { .render-with-pret }
+import time
+
+from pret import component, use_effect, use_state
 from pret.ui.react import br
-import os
 
-static_cwd = os.getcwd()
+static_time = str(time.time())
 
-def dynamic_cwd():
-    return os.getcwd()
+def dynamic_client_time():
+    return str(time.time())
 
 @component
 def ShowCurrentWorkingDirectory():
     return [
-        f"Current working dir when this App was built: {static_cwd}",
+        f"Current time when this App was built: {static_time}",
         br(),
-        f"Current working dir when this App is rendered: {dynamic_cwd()}",
+        f"Current CLIENT time when this App is rendered: {dynamic_client_time()}",
     ]
 
 ShowCurrentWorkingDirectory()
 ```
 
-The "dynamic" displayed path will be the one from the browser's pyodide environment. In fact, these docs are hosted as a static website on GitHub Pages, so there is no server-side environment to access *during the rendering process*. The "static" path will be the one from the server-side environment, computed when the component is built and sent as a constant to the browser.
+The "dynamic" displayed time will be the one from the browser's. In fact, these docs are hosted as a static website on GitHub Pages, so there is no server-side environment to access *during the rendering process*. The "static" time will be the one from the server-side environment, computed when the component is built and sent as a constant to the browser.
 
 ## Running server-side code
 
@@ -43,36 +45,40 @@ To tell Pret to run a function on the server-side, you can decorate a function w
 At the moment, it is not possible to directly await the result of the server function in the rendering function. Therefore, in the example below, we combine `@server_only` with `use_effect` to update the displayed current server working directory once it has been fetched from the server.
 
 ```python { .no-exec }
-from pret import server_only, use_effect, use_memo, use_state
-from pret import component
+import time
+
+from pret import component, server_only, use_effect, use_state
 from pret.ui.react import br
-import os
-from asyncio import sleep
+
 
 @server_only
-def dynamic_server_cwd():
-    return os.getcwd()
+def dynamic_server_time():
+    time.sleep(4)
+    return str(time.time())
 
-def dynamic_client_cwd():
-    return os.getcwd()
 
-static_cwd = os.getcwd()
+def dynamic_client_time():
+    return str(time.time())
+
+
+static_time = str(time.time())
+
 
 @component
 def ShowCurrentWorkingDirectory():
-    server_cwd, set_server_cwd = use_state("undefined")
+    server_time, set_server_time = use_state(None)
 
     async def on_load():
-        set_server_cwd(await dynamic_server_cwd())
+        set_server_time(await dynamic_server_time())
 
     use_effect(on_load, [])
 
     return [
-        f"Current working dir when this App was built: {static_cwd}",
+        f"Current time when this App was built: {static_time}",
         br(),
-        f"Current CLIENT working dir when this App is rendered: {dynamic_client_cwd()}",
+        f"Current CLIENT time when this App is rendered: {dynamic_client_time()}",
         br(),
-        f"Current SERVER working dir when this App is rendered: {server_cwd}",
+        f"Current SERVER time when this App is rendered: {server_time or 'Waiting for server...'}",
     ]
 
 ShowCurrentWorkingDirectory()
@@ -88,13 +94,14 @@ In the last [Sharing state]("./sharing-state.md") tutorial, we saw how to create
 Pret offers a simple way to synchronize the state between the client and the server, by using the `remote_sync` option in the `proxy` function. This option will keep both server and client states in sync whenever one of them is updated.
 
 ```python { .render-with-pret }
-from pret.ui.joy import Button, Typography, Stack
+from pret.ui.joy import Button
 from pret import component, proxy
 from pret.hooks import use_tracked
 
 state = proxy({
     "count": 0,
 }, remote_sync=True)
+
 
 @component
 def Counter():
@@ -104,6 +111,7 @@ def Counter():
         state["count"] += 1
 
     return Button(f"Count: {tracked['count']}. Click to increment", on_click=increment)
+
 
 Counter()
 ```

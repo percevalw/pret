@@ -34,10 +34,10 @@
   "dependencies": {
     "css-loader": "^6.7.3",
     "node-fetch": "^3.3.2",
-    "pyodide": "0.28.0-alpha.2",
     "regenerator-runtime": "^0.13.11",
     "style-loader": "^3.3.2",
-    "use-sync-external-store": "^1.2.0"
+    "use-sync-external-store": "^1.2.0",
+    "valtio": "^2.1.5"
   },
   "devDependencies": {
     "@jupyterlab/builder": "^3.6.3",

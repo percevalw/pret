@@ -7,7 +7,7 @@ import Loading from "../components/Loading";
 
 export type PretViewData = {
   serialized: string;
-  unpickler_id: string;
+  marshaler_id: string;
   chunk_idx: number;
 };
 
@@ -61,7 +61,6 @@ export class PretViewWidget extends LuminoWidget {
     this._viewData = options.view_data;
     this.manager = manager;
     this.keepHiddenWhenExecuted = true;
-    manager.startPython();
 
     this.model = null;
 

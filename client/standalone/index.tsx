@@ -1,18 +1,10 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom";
-import { loadPyodide } from "pyodide";
 import Loading from "../components/Loading";
-import DESERIALIZE_PY from "../deserialize.py";
 
 import "@pret-globals";
 
-import useSyncExternalStoreExports from "use-sync-external-store/shim";
-
-// @ts-ignore
-React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
-
-// @ts-ignore
-window._empty_hook_deps = [];
+import { makeLoadApp } from "../appLoader";
 
 const createResource = (promise) => {
   let status = "loading";
@@ -54,30 +46,15 @@ const loadExtensions = async () => {
   );
 };
 
-let pyodidePromise = null;
-
 async function loadBundle() {
-  if (!pyodidePromise) {
-    pyodidePromise = loadPyodide({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.28.0-alpha.2/full/",
-    });
-  }
-
-  const [pyodide, bundle, extensions] = await Promise.all([
-    // Load pyodide
-    pyodidePromise,
-    // Load the base64 bundle as a base64 string
-    fetch((window as any).PRET_PICKLE_FILE).then((res) => res.text()),
+  const [bundle, extensions] = await Promise.all([
+    fetch((window as any).PRET_PICKLE_FILE).then((res) => res.json()),
     // Load the extensions that will make required modules available as globals
     loadExtensions(),
   ]);
-  console.log(extensions);
-  await pyodide.loadPackage("micropip");
-  const micropip = pyodide.pyimport("micropip");
-  await micropip.install("dill");
-  (window as any).React = React;
-  await pyodide.runPythonAsync(DESERIALIZE_PY);
-  return { pyodide, bundle };
+  return {
+    bundle: bundle,
+  }
 }
 
 class ErrorBoundary extends React.Component {
@@ -90,13 +67,11 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
-    // Update state so the next render will show the fallback UI.
     return { error: error };
   }
 
   render() {
     if (this.state.error) {
-      // You can render any custom fallback UI
       return <pre>{this.state.error.toString()}</pre>;
     }
 
@@ -109,37 +84,31 @@ const RenderBundle = ({ resource, chunkIdx }) => {
     const makeRenderable = resource.read(chunkIdx);
     return makeRenderable(chunkIdx);
   } catch (err) {
-    // If it's still loading, we throw err to be caught by Suspense
     if (err instanceof Promise) {
       throw err;
     } else {
-      // This means we got an actual error
       console.error(err);
       return <div>Error: {err.message}</div>;
     }
   }
 };
 
-// Initialize data-theme
 document.addEventListener("DOMContentLoaded", () => {
   function updateTheme() {
     const scheme = document.body.getAttribute("data-md-color-scheme");
     let theme;
     if (scheme === "default" || scheme === null) {
-      theme = "light"; // default to light if attribute is "default" or missing
+      theme = "light";
     } else if (scheme === "slate") {
       theme = "dark";
     } else {
-      theme = "light"; // fallback to light if any other unexpected value
+      theme = "light";
     }
-    // For instance, set a data attribute on the html element:
     document.documentElement.setAttribute("data-theme", theme);
   }
 
-  // Update theme immediately on load
   updateTheme();
 
-  // Create a MutationObserver to listen for attribute changes on the body
   const observer = new MutationObserver(mutations => {
     mutations.forEach(mutation => {
       if (mutation.attributeName === "data-md-color-scheme") {
@@ -148,12 +117,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Observe changes to attributes on the body element
   observer.observe(document.body, { attributes: true });
 });
 
 function renderPret() {
-  let bundlePromise = loadBundle();
+  const bundlePromise = loadBundle();
+  const loadApp = makeLoadApp();
 
   const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
 
@@ -162,12 +131,8 @@ function renderPret() {
 
     const resource = createResource(
       (async (chunkIdx) => {
-        const { pyodide, bundle } = await bundlePromise;
-        const locals = pyodide.toPy({ bundle_string: bundle });
-        const [makeRenderable, manager] = await pyodide.runPythonAsync(
-          `load_view(bundle_string, "root", ${chunkIdx})`,
-          { locals: locals }
-        );
+        const { bundle } = await bundlePromise;
+        const [makeRenderable, manager] = loadApp(bundle, "root", chunkIdx);
         if (!makeRenderable || !manager) {
           throw new Error("Failed to unpack bundle");
         }

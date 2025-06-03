@@ -7,7 +7,7 @@ import typer
 sys.path.insert(0, os.getcwd())
 
 from pret.main import extract_js_dependencies
-from pret.serialize import get_shared_pickler
+from pret.marshal import get_shared_marshaler
 
 app = typer.Typer()
 
@@ -35,7 +35,7 @@ def prepack(stub_module: str, output_path: str, cwd: bool = True):
     module = __import__(stub_module, fromlist=["*"])
     print(f"Pre-pack from {stub_module} at {module.__file__}")
 
-    pickler = get_shared_pickler()
+    pickler = get_shared_marshaler()
     pickler.dump(module)
     js_globals_file_str = extract_js_dependencies(pickler.accessed_global_refs)[0]
 

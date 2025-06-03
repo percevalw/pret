@@ -2,24 +2,21 @@
 Tracked state management for Python to enable reactive programming in Python,
 both in the browser and in the kernel.
 Inspired by the amazing valtio library (https://github.com/pmndrs/valtio).
+Since v0.2.0, Pret proxies are actually marshaled as valtio proxies when sending
+the app to the browser.
 """
 
 import asyncio
-import sys
 import typing
 import uuid
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union, overload
 from weakref import WeakKeyDictionary, WeakValueDictionary
 
-from .manager import get_manager
+import pret
+from pret.marshal import marshal_as
 
 
-def get_untracked(obj):
-    if isinstance(obj, (TrackedDictPretProxy, TrackedListPretProxy)):
-        return obj._proxy_object
-    return obj
-
-
+@marshal_as(dict)
 class Dict(dict):
     pass
 
@@ -27,6 +24,7 @@ class Dict(dict):
         return id(self)
 
 
+@marshal_as(list)
 class List(list):
     pass
 
@@ -138,6 +136,7 @@ class ProxyState:
         return snap
 
 
+@marshal_as(js="return window.valtio.proxy")
 class DictPretProxy(dict):
     def __init__(self, mapping, sync_id=None):
         super().__init__()
@@ -151,7 +150,7 @@ class DictPretProxy(dict):
 
         if sync_id is not None:
             self._sync_id = sync_id
-            manager = get_manager()
+            manager = pret.manager.get_manager()
 
             def listener(ops):
                 return manager.send_state_change(ops, sync_id)
@@ -163,7 +162,7 @@ class DictPretProxy(dict):
         patch(self, ops)
 
     def __reduce__(self):
-        return DictPretProxy, (
+        return make_reconstruct_js_proxy(), (
             self.proxy_state.get_snapshot(),
             getattr(self, "_sync_id", None),
         )
@@ -177,9 +176,6 @@ class DictPretProxy(dict):
         # Re-assign prop listener
         proxy_state = proxy_state_map[self]
         proxy_state.remove_prop_listener(key)
-
-        if isinstance(value, (dict, list)):
-            value = get_untracked(value) or value
 
         # Ensure that the value is proxied
         if value not in proxy_state_map:  # and proxied not in ref_set:
@@ -196,12 +192,12 @@ class DictPretProxy(dict):
                 proxy_state.add_prop_listener(key, child_proxy_state)
 
         super().__setitem__(key, proxied)
-        proxy_state.notify_update(["__setitem__", [key], snapshot(value)])
+        proxy_state.notify_update(["set", [key], snapshot(value)])
 
     def __delitem__(self, key):
         super().__delitem__(key)
         self.proxy_state.remove_prop_listener(key)
-        self.proxy_state.notify_update(["__delitem__", [key], None])
+        self.proxy_state.notify_update(["delete", [key], None])
 
     def clear(self) -> None:
         for key in self:
@@ -212,13 +208,13 @@ class DictPretProxy(dict):
     def pop(self, key, default=None):
         self.proxy_state.remove_prop_listener(key)
         value = super().pop(key, default)
-        self.proxy_state.notify_update(["__delitem__", [key], None])
+        self.proxy_state.notify_update(["delete", [key], None])
         return value
 
     def popitem(self):
         key, value = super().popitem()
         self.proxy_state.remove_prop_listener(key)
-        self.proxy_state.notify_update(["__delitem__", [key], None])
+        self.proxy_state.notify_update(["delete", [key], None])
         return key, value
 
     def setdefault(self, key, default=None):
@@ -237,6 +233,7 @@ class DictPretProxy(dict):
         return id(self)
 
 
+@marshal_as(js="return window.valtio.proxy")
 class ListPretProxy(list):
     def __init__(self, sequence, sync_id=None):
         super().__init__()
@@ -250,7 +247,7 @@ class ListPretProxy(list):
 
         if sync_id is not None:
             self._sync_id = sync_id
-            manager = get_manager()
+            manager = pret.manager.get_manager()
 
             def listener(ops):
                 return manager.send_state_change(ops, sync_id)
@@ -262,7 +259,7 @@ class ListPretProxy(list):
         patch(self, ops)
 
     def __reduce__(self):
-        return ListPretProxy, (
+        return make_reconstruct_js_proxy(), (
             self.proxy_state.get_snapshot(),
             getattr(self, "_sync_id", None),
         )
@@ -275,9 +272,6 @@ class ListPretProxy(list):
         # Re-assign prop listener
         proxy_state = proxy_state_map[self]
         proxy_state.remove_prop_listener(key)
-
-        if isinstance(value, (dict, list)):
-            value = get_untracked(value) or value
 
         # Ensure that the value is proxied
         if value not in proxy_state_map:  # and proxied not in ref_set:
@@ -294,24 +288,21 @@ class ListPretProxy(list):
                 proxy_state.add_prop_listener(key, child_proxy_state)
 
         super().__setitem__(key, proxied)
-        proxy_state.notify_update(["__setitem__", [key], value])
+        proxy_state.notify_update(["set", [key], value])
 
     def __delitem__(self, key):
         super().__delitem__(key)
         self.proxy_state.remove_prop_listener(key)
-        self.proxy_state.notify_update(["__delitem__", [key], None])
+        self.proxy_state.notify_update(["delete", [key], None])
 
     def pop(self, index=-1):
         value = super().pop(index)
-        self.proxy_state.notify_update(["__delitem__", [index], None])
+        self.proxy_state.notify_update(["delete", [index], None])
         return value
 
     def append(self, value) -> None:
         # Re-assign prop listener
         proxy_state = proxy_state_map[self]
-
-        if isinstance(value, (dict, list)):
-            value = get_untracked(value) or value
 
         # Ensure that the value is proxied
         if value not in proxy_state_map:  # and proxied not in ref_set:
@@ -354,233 +345,6 @@ class Affected:
 
     def __repr__(self):
         return f"Affected({self.getitem_keys}, {self.hasitem_keys})"
-
-
-class TrackedDictPretProxy(dict):
-    def __init__(self, mapping, affected, proxy_object):
-        super().__init__(mapping)
-        self._affected = affected
-        self._base_object: DictPretProxy = mapping
-        self._proxy_object = proxy_object
-        # the only reason for this is to keep tracked item into memory
-        # and avoid collection by the garbage collector when converting
-        # them into js objects
-        # fixing pyodide cache mechanism (store them in a context ?)
-        # would likely be a better solution
-        self._children = set()
-
-    def __getitem__(self, item):
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        self_affected.getitem_keys.add(item)
-        res = tracked(
-            super().__getitem__(item),
-            self._affected,
-            self._proxy_object[item],
-        )
-        self._children.add(res)
-        return res
-
-    def get(self, item, default=None):
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        self_affected.getitem_keys.add(item)
-
-        if super().__contains__(item):
-            res = tracked(
-                super().__getitem__(item),
-                self._affected,
-                self._proxy_object[item],
-            )
-            self._children.add(res)
-        else:
-            res = default
-        return res
-
-    def __setitem__(self, key, value):
-        self._proxy_object[key] = value
-
-    def __delitem__(self, key):
-        del self._proxy_object[key]
-
-    def update(self, other=None, **kwargs):
-        self._proxy_object.update(other, **kwargs)
-
-    def pop(self, key, default=None):
-        return self._proxy_object.pop(key, default)
-
-    def popitem(self):
-        return self._proxy_object.popitem()
-
-    def clear(self):
-        self._proxy_object.clear()
-
-    def setdefault(self, key, default=None):
-        return self._proxy_object.setdefault(key, default)
-
-    def __hash__(self):
-        return id(self)
-
-    # TEST, because pyodide js proxy_obj[attr] is translated as obj.attr in python
-    def __getattr__(self, attr):
-        try:
-            return self[attr]
-        except KeyError:
-            return None
-
-
-class TrackedListPretProxy(list):
-    def __init__(self, sequence, affected, proxy_object):
-        super().__init__(sequence)
-        self._affected = affected
-        self._base_object = sequence
-        self._proxy_object = proxy_object
-        # see TrackedDictProxy for explanation
-        self._children = set()
-
-    def __getitem__(self, item):
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        self_affected.getitem_keys.add(item)
-        res = tracked(
-            super().__getitem__(item),
-            self._affected,
-            self._proxy_object[item],
-        )
-        self._children.add(res)
-        return res
-
-    def __iter__(self):
-        # return super().__iter__()
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        for item, (value, proxy_value) in enumerate(
-            zip(super().__iter__(), self._proxy_object)
-        ):
-            self_affected.getitem_keys.add(item)
-            res = tracked(value, self._affected, proxy_value)
-            self._children.add(res)
-            yield res
-
-    def __len__(self):
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        self_affected.length = True
-        return super().__len__()
-
-    def append(self, value):
-        self._proxy_object.append(value)
-
-    def extend(self, values):
-        self._proxy_object.extend(values)
-
-    def insert(self, index, value):
-        self._proxy_object.insert(index, value)
-
-    def remove(self, value):
-        self._proxy_object.remove(value)
-
-    def pop(self, index=-1):
-        return self._proxy_object.pop(index)
-
-    def clear(self):
-        self._proxy_object.clear()
-
-    def __setitem__(self, key, value):
-        self._proxy_object[key] = value
-
-    def __delitem__(self, key):
-        del self._proxy_object[key]
-
-    def __hash__(self):
-        return id(self)
-
-    def index(self, value, start=0, stop=sys.maxsize):
-        if id(self._base_object) not in self._affected:
-            self._affected[id(self._base_object)] = Affected(self._base_object)
-        return self._proxy_object.index(value, start, stop)
-
-
-class TrackedTupleProxy:
-    def __getattribute__(self, attr):
-        if attr == "__class__":
-            return tuple
-        return super().__getattribute__(attr)
-
-    def __init__(self, sequence, affected, proxy_object):
-        self._affected = affected
-        self._base_object = sequence
-        self._proxy_object = proxy_object
-        # see TrackedDictProxy for explanation
-        self._children = set()
-
-    def __getitem__(self, item):
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        self_affected.getitem_keys.add(item)
-        res = tracked(
-            self._base_object[item],
-            self._affected,
-            self._proxy_object[item],
-        )
-        self._children.add(res)
-        return res
-
-    def __iter__(self):
-        len(self)
-        # return super().__iter__()
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        for item, (value, proxy_value) in enumerate(
-            zip(self._base_object, self._proxy_object)
-        ):
-            self_affected.getitem_keys.add(item)
-            res = tracked(value, self._affected, proxy_value)
-            self._children.add(res)
-            yield res
-
-    def __len__(self):
-        if id(self._base_object) not in self._affected:
-            self_affected = self._affected[id(self._base_object)] = Affected(
-                self._base_object
-            )
-        else:
-            self_affected = self._affected[id(self._base_object)]
-        self_affected.length = True
-        return len(self._base_object)
-
-    def __hash__(self):
-        return id(self)
 
 
 def is_changed(prev_snap, next_snap, affected):
@@ -637,6 +401,21 @@ tracked_proxy_cache = WeakValueDictionary()
 proxy_state_map: WeakKeyDictionary = WeakKeyDictionary()
 
 
+T = typing.TypeVar("T")
+
+
+@overload
+def proxy(value: typing.Mapping, remote_sync: bool = False) -> DictPretProxy: ...
+
+
+@overload
+def proxy(value: typing.Sequence, remote_sync: bool = False) -> ListPretProxy: ...
+
+
+@overload
+def proxy(value: T, remote_sync: bool = False) -> T: ...
+
+
 def proxy(value, remote_sync=False):
     if remote_sync:
         if remote_sync is True:
@@ -668,30 +447,8 @@ def proxy(value, remote_sync=False):
     return proxied
 
 
-def tracked(value, affected, proxy_object):
-    if isinstance(value, (int, float, str, bool, type(None))):
-        return value
-
-    weak_handle = id(value)
-    try:
-        proxied = tracked_proxy_cache[weak_handle]
-        if proxied._base_object is value:
-            return proxied
-    except KeyError:
-        pass
-
-    if isinstance(value, dict):
-        proxied = TrackedDictPretProxy(value, affected, proxy_object)
-    elif isinstance(value, list):
-        proxied = TrackedListPretProxy(value, affected, proxy_object)
-    elif isinstance(value, tuple):
-        proxied = TrackedTupleProxy(value, affected, proxy_object)
-    else:
-        raise NotImplementedError(f"Cannot track {type(value)}")
-
-    tracked_proxy_cache[weak_handle] = proxied
-
-    return proxied
+TrackedDictPretProxy = dict
+TrackedListPretProxy = list
 
 
 def make_subscriber(subscribe, proxy_object, callback, notify_in_sync=False):
@@ -701,6 +458,30 @@ def make_subscriber(subscribe, proxy_object, callback, notify_in_sync=False):
     return _subscribe
 
 
+@marshal_as(
+    js="""
+return (function(proxy_object, callback, notify_in_sync) {
+    if (arguments.length > 0) {
+        var kwargs = arguments[arguments.length - 1]
+        if (kwargs && kwargs.hasOwnProperty("__kwargtrans__")) {
+            delete props.__kwargtrans__;
+            for (var attr in kwargs) {
+                switch (attr) {
+                    case 'proxy_object': var proxy_object = kwargs [attr]; break;
+                    case 'notify_in_sync': var notify_in_sync = kwargs [attr]; break;
+                }
+            }
+        }
+    }
+    if (callback === undefined) {
+        return (callback) => {
+            return window.valtio.subscribe(proxy_object, callback, notify_in_sync);
+        }
+    }
+    return window.valtio.subscribe(proxy_object, callback, notify_in_sync);
+})
+"""
+)
 def subscribe(proxy_object, callback=None, notify_in_sync=False):
     if callback is None:
 
@@ -748,35 +529,57 @@ def subscribe(proxy_object, callback=None, notify_in_sync=False):
     return unsubscribe
 
 
+@marshal_as(
+    js="""
+return ((obj) => {
+    window.valtio.trackMemo(obj);
+    return window.valtio.getUntracked(obj) || window.valtio.snapshot(obj);
+})
+"""
+)
 def snapshot(value):
     if is_proxy(value):
-        value = get_untracked(value)
         proxy_state = proxy_state_map[value]
         return proxy_state.get_snapshot()
     return value
 
 
 def patch(proxy_object, ops):
-    # super_cls = type(proxy_object).__bases__[0]
     for op in ops:
         # apply changes to the state following the op structures used in notify_update
-        # proxy_state.notify_update(["__setitem__", [path keys ...], value])
-        # self.proxy_state.notify_update(["__delitem__", [path keys ...], None])
+        # proxy_state.notify_update(["set", [path keys ...], value])
+        # self.proxy_state.notify_update(["delete", [path keys ...], None])
         # self.proxy_state.notify_update(["clear", [], None])
 
         path = op[1]
         target = proxy_object
         value = op[2]
 
-        if op[0] in ("__setitem__", "__delitem__", "insert"):
+        if op[0] in ("set", "delete", "insert"):
             for key in path[:-1]:
+                if isinstance(target, (list, tuple)):
+                    key = int(key)
                 target = target[key]
-            key = path[-1]
 
-            if op[0] == "__setitem__":
-                target[key] = value
+            key = path[len(path) - 1]
+            if isinstance(target, (list, tuple)):
+                key = int(key)
 
-            elif op[0] == "__delitem__":
+            if op[0] == "set":
+                if isinstance(target, (list, tuple)):
+                    if key == "length":
+                        if len(target) < value:
+                            target.extend([None] * (value - len(target)))
+                        elif len(target) > value:
+                            del target[value:]
+                    else:
+                        if key >= len(target) and isinstance(target, list):
+                            target.extend([None] * (key - len(target) + 1))
+                        target[key] = value
+                else:
+                    target[key] = value
+
+            elif op[0] == "delete":
                 del target[key]
 
             elif op[0] == "insert":
@@ -797,3 +600,33 @@ def patch(proxy_object, ops):
 
 def is_proxy(obj):
     return obj.__class__.__name__.endswith("PretProxy")
+
+
+_reconstruct_js_proxy = None
+
+
+def make_reconstruct_js_proxy():
+    global _reconstruct_js_proxy
+    if _reconstruct_js_proxy is not None:
+        return _reconstruct_js_proxy
+
+    @marshal_as(
+        js="""
+return (function reconstruct_js_proxy(content, sync_id) {
+    var proxy = window.valtio.proxy(content);
+    if (sync_id) {
+        var manager = get_manager();
+        unsub = window.valtio.subscribe(proxy, function(ops) {
+            manager.send_state_change(ops, sync_id);
+        }, false);
+        manager.register_state(sync_id, proxy, unsub);
+    }
+    return proxy;
+});""",
+        globals=lambda: {"get_manager": pret.manager.get_manager},
+    )
+    def reconstruct_js_proxy(content, sync_id=None): ...
+
+    _reconstruct_js_proxy = reconstruct_js_proxy
+
+    return _reconstruct_js_proxy

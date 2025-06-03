@@ -1,0 +1,4 @@
+[submodule "vendor/transcrypt"]
+	path = vendor/transcrypt
+	url = https://github.com/percevalw/Transcrypt
+	branch = pret

@@ -20,7 +20,7 @@ from mkdocstrings.plugin import MkdocstringsPlugin
 from regex import regex
 
 from pret.main import build
-from pret.serialize import clear_shared_pickler
+from pret.marshal import clear_shared_marshaler
 
 BRACKET_RE = regex.compile(r"\[([^\[]+)\]")
 CITE_RE = regex.compile(r"@([\w_:-]+)")
@@ -218,7 +218,7 @@ class PretSnippetRendererPlugin(BasePlugin):
                     self.assets.update(assets)
                     self.entries.update(entries)
 
-        clear_shared_pickler()
+        clear_shared_marshaler()
 
         return html
 

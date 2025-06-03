@@ -1,42 +1,70 @@
-import base64
+"""
+This module provides helpers to create React components from Python functions,
+and to create components from existing React components.
+Any component is made renderable in Jupyter by wrapping it in a `Renderable` object
+when called from Python.
+"""
+
 import functools
-from typing import Awaitable, Callable, TypeVar, Union
+from typing import Callable, TypeVar
 
-from typing_extensions import ParamSpec
-
-from pret.bridge import (
-    cached_prop_to_js,
-    create_proxy,
-    js,
-    pyodide,
-)
 from pret.manager import get_manager
-from pret.serialize import PretPickler, get_shared_pickler, pickle_as
+from pret.marshal import get_shared_marshaler, marshal_as
 
 T = TypeVar("T")
 
 
-# def create_element(element_type, props, children):
-#     children = (
-#         [
-#             pyodide.ffi.to_js(child, dict_converter=js.Object.fromEntries)
-#             for child in children
-#         ]
-#         if isinstance(children, list)
-#         else pyodide.ffi.to_js(children, dict_converter=js.Object.fromEntries)
-#     )
-#     result = js.React.createElement(
-#         # element_type is either
-#         # - str -> str
-#         # - or py function -> PyProxy
-#         element_type,
-#         props,
-#         *[
-#             pyodide.ffi.to_js(child, dict_converter=js.Object.fromEntries)
-#             for child in children
-#         ],
-#     )
-#     return result
+def stub_component(name, props_mapping) -> Callable[[T], T]:
+    def make(fn):
+        @marshal_as(
+            js="""
+return function py_to_react() {
+    var children;
+    var props;
+	if (
+            arguments.length > 0
+            && arguments[arguments.length - 1]
+            && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
+    ) {
+        children = Array.prototype.slice.call(arguments, 0, -1);
+        props = arguments[arguments.length - 1];
+        delete props.__kwargtrans__;
+        var props = Object.fromEntries(Object.entries(props).map(([k, v]) => [
+            props_mapping[k] || k,
+            v
+        ]));
+    } else {
+        children = Array.from(arguments);
+        props = {};
+    }
+    return window.React.createElement(
+        name,
+        props,
+        ...(Array.isArray(children) ? children : [children])
+    );
+}
+""",
+            globals={
+                "name": name,
+                "props_mapping": props_mapping,
+            },
+        )
+        def py_to_react(*children, **props): ...
+
+        @functools.wraps(fn)
+        @marshal_as(py_to_react)
+        def wrapped(*children, detach=False, **props):
+            def render():
+                return py_to_react(*children, **props)
+
+            return Renderable(
+                render,
+                detach=detach,
+            )
+
+        return wrapped
+
+    return make
 
 
 def make_create_element_from_function(fn):
@@ -55,80 +83,48 @@ def make_create_element_from_function(fn):
     (**props) -> ReactElement<fn
     """
 
-    def react_type_fn(props, ctx=None):
-        props = props.to_py(depth=1)
-        props = {
-            key: value.unwrap()
-            if isinstance(value, pyodide.ffi.JsDoubleProxy)
-            else value
-            for key, value in props.items()
-        }
-        # pyodide 0.23.2 and pyodide 0.26.2
-        children = props.pop("children").values() if "children" in props else []
-        return fn(*children, **props)
+    @marshal_as(
+        js="""
+return function react_to_py(props) {
+    var children = props.children || {};
+    var rest = Object.fromEntries(
+        Object.entries(props).filter(([key, _]) => key !== "children")
+    );
+    return fn(...Object.values(props.children || {}), __kwargtrans__(rest));
+}
+""",
+        globals={"fn": fn},
+    )
+    def react_to_py(props, ctx=None): ...
 
-    name = fn.__name__
+    @marshal_as(
+        js="""
+// py_to_react for @component
+return function py_to_react() {
+	if (
+        arguments.length > 0
+        && arguments[arguments.length - 1]
+        && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
+	) {
+        var children = Array.prototype.slice.call(arguments, 0, -1);
+        var props = arguments[arguments.length - 1];
+    } else {
+        var children = Array.prototype.slice.call(arguments, 0, -1);
+        var props = {};
+    }
+    delete props.__kwargtrans__;
+    return window.React.createElement(
+        react_to_py,
+        props,
+        ...(Array.isArray(children) ? children : [children])
+    );
+}
+""",
+        globals={"react_to_py": react_to_py},
+    )
+    def py_to_react(*children, **props): ...
 
-    def wrap_in_browser(react_fn):
-        res = js.React.memo(react_fn)
-        res.displayName = name
-        return res
-
-    react_type_fn = create_proxy(react_type_fn, wrap_in_browser=wrap_in_browser)
-
-    def create(*children, **props):
-        props_as_list = [[k, cached_prop_to_js(v)] for k, v in props.items()]
-        return js.React.createElement(
-            # Element_type is a py function -> PyProxy
-            react_type_fn,
-            # Passed props is a JsProxy of a JS object.
-            # Since element_type is a py function, props will come back in Python when
-            # React calls it, so it's a shallow conversion (depth=1). We could have done
-            # no pydict -> jsobject conversion (and send a PyProxy) but React expect an
-            # object
-            # pyodide.ffi.to_js(props, depth=1, dict_converter=js.Object.fromEntries),
-            js.Object.fromEntries(props_as_list),
-            # Same, this proxy will be converted back to the original Python object
-            # when React calls the function, but this time we don't need to convert it
-            # to a JS Array (React will pass it as is)
-            # pyodide.ffi.create_proxy(children),
-            *(cached_prop_to_js(child) for child in children),
-        )
-
-    return create
-
-
-def stub_component(name, props_mapping) -> Callable[[T], T]:
-    def make(fn):
-        def create_fn(*children, **props):
-            props_as_list = [
-                [props_mapping.get(k, k), cached_prop_to_js(v)]
-                for k, v in props.items()
-            ]
-            return js.React.createElement(
-                # element_type is either a str or a PyProxy of a JS function
-                # such as window.JoyUI.Button
-                name,
-                # Deep convert to JS objects (depth=-1) to avoid issues with React
-                js.Object.fromEntries(props_as_list),
-                # Deep convert too, same reason
-                *(cached_prop_to_js(child) for child in children),
-            )
-
-        @functools.wraps(fn)
-        @pickle_as(create_fn)
-        def wrapped(*children, detach=False, **props):
-            def render():
-                return create_fn(*children, **props)
-
-            return Renderable(
-                render,
-                detach=detach,
-            )
-
-        return wrapped
-
-    return make
+    return py_to_react
 
 
 def component(fn: Callable):
@@ -140,16 +136,27 @@ def component(fn: Callable):
     ----------
     fn: Callable
     """
+    # When decorating a rendering function
+    #
+    # @component
+    # def my_component(*children, **props):
+    #     ...
+    #
+    # this will return a "wrapped" function.
+    # Then, either the user calls it from Python, which will return a
+    # Renderable object, it is called in the browser. In this case, it's
+    # not the "wrapped" function that is called, but the transformed
+    # "create_fn" function
     create_fn = make_create_element_from_function(fn)
 
     @functools.wraps(fn)
-    @pickle_as(create_fn)
+    @marshal_as(create_fn)
     def wrapped(*children, detach=False, **props):
-        def render():
+        def render_x():
             return create_fn(*children, **props)
 
         return Renderable(
-            render,
+            render_x,
             detach=detach,
         )
 
@@ -176,7 +183,7 @@ class ClientRef:
         return f"Ref(id={self.id}, current={repr(self.current)})"
 
 
-@pickle_as(ClientRef)
+@marshal_as(ClientRef)
 class Ref:
     registry = {}
 
@@ -191,28 +198,27 @@ class Ref:
 
 
 class Renderable:
-    def __init__(self, dillable, detach):
-        self.dillable = dillable
+    def __init__(self, obj, detach):
+        self.obj = obj
         self.detach = detach
-        self.pickler = None
+        self.marshaler = None
         self.data = None
 
-    def ensure_pickler(self) -> PretPickler:
+    def ensure_marshaler(self):
         # Not in __init__ to allow a previous overwritten view
         # to be deleted and garbage collected
-        if self.pickler is None:
+        if self.marshaler is None:
             import gc
 
             gc.collect()
-            self.pickler = get_shared_pickler()
-        return self.pickler
-
-    def bundle(self):
-        data, chunk_idx = self.ensure_pickler().dump((self.dillable, get_manager()))
-        return base64.encodebytes(data).decode(), chunk_idx
+            self.marshaler = get_shared_marshaler()
+        return self.marshaler
 
     def __reduce__(self):
-        return self.dillable, ()
+        return self.obj, ()
+
+    def bundle(self):
+        return self.ensure_marshaler().dump((self.obj, get_manager()))
 
     def _repr_mimebundle_(self, *args, **kwargs):
         plaintext = repr(self)
@@ -226,26 +232,9 @@ class Renderable:
                 "version_major": 0,
                 "version_minor": 0,
                 "view_data": {
-                    "unpickler_id": self.pickler.id,
+                    "marshaler_id": self.marshaler.id,
                     "serialized": data,
                     "chunk_idx": chunk_idx,
                 },
             },
         }
-
-
-def make_remote_callable(function_id):
-    async def remote_call(*args, **kwargs):
-        return await get_manager().send_call(function_id, *args, **kwargs)
-
-    return remote_call
-
-
-CallableParams = ParamSpec("ServerCallableParams")
-CallableReturn = TypeVar("CallableReturn")
-
-
-def server_only(
-    fn: Callable[CallableParams, CallableReturn],
-) -> Callable[CallableParams, Union[Awaitable[CallableReturn], CallableReturn]]:
-    return pickle_as(fn, make_remote_callable(get_manager().register_function(fn)))

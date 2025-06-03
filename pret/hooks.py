@@ -1,4 +1,3 @@
-import functools
 from typing import (
     Any,
     Callable,
@@ -13,25 +12,22 @@ from typing import (
 
 from typing_extensions import Protocol
 
-from pret.bridge import cached_to_js
+from pret.marshal import js, marshal_as
 from pret.state import (
     DictPretProxy,
     ListPretProxy,
     TrackedDictPretProxy,
     TrackedListPretProxy,
-    get_untracked,
-    is_changed,
-    is_proxy,
-    snapshot,
-    subscribe,
-    tracked,
 )
-
-from .bridge import create_proxy, js, pyodide, to_js
 
 StateValueType = TypeVar("StateValueType")
 
 
+@marshal_as(
+    js="""
+return window.React.useState
+"""
+)
 def use_state(
     initial_value: "StateValueType",
 ) -> "Tuple[StateValueType, Callable[[StateValueType], None]]":
@@ -68,17 +64,16 @@ def use_state(
         - The current value of the state
         - A function to update the state
     """
-    value, set_value = js.React.useState(pyodide.ffi.create_proxy(initial_value))
-
-    def set_proxy_value(new_value):
-        return set_value(pyodide.ffi.create_proxy(new_value))
-
-    return value.unwrap(), set_proxy_value
 
 
 T = TypeVar("T")
 
 
+@marshal_as(
+    js="""
+return window.React.useMemo
+"""
+)
 def use_memo(
     fn: "Callable[[], T]",
     dependencies: "List",
@@ -107,16 +102,6 @@ def use_memo(
         The value
     """
 
-    def wrapper():
-        return pyodide.ffi.create_proxy(fn())
-
-    return js.React.useMemo(
-        wrapper,
-        pyodide.ffi.to_js([id(d) for d in dependencies])
-        if dependencies is not None
-        else None,
-    ).unwrap()
-
 
 RefValueType = TypeVar("RefValueType")
 
@@ -125,6 +110,11 @@ class RefType(Protocol[RefValueType]):
     current: RefValueType
 
 
+@marshal_as(
+    js="""
+return window.React.useRef
+"""
+)
 def use_ref(initial_value: "RefValueType") -> "RefType[RefValueType]":
     """
     Returns a mutable ref object whose `.current` property is initialized to the
@@ -145,13 +135,18 @@ def use_ref(initial_value: "RefValueType") -> "RefType[RefValueType]":
     return js.React.useRef(initial_value)
 
 
-CallbackType = NewType("CallbackType", Callable[..., Any])
+C = NewType("C", Callable[..., Any])
 
 
+@marshal_as(
+    js="""
+return window.React.useCallback
+"""
+)
 def use_callback(
-    callback: "CallbackType",
+    callback: "C",
     dependencies: "Optional[List]" = None,
-) -> "CallbackType":
+) -> "C":
     """
     Returns a memoized callback function. The callback will be stable across
     re-renders, as long as the dependencies don't change, meaning the last
@@ -161,12 +156,12 @@ def use_callback(
 
         Ensure that dependencies are simple values like int, str, bool
         to avoid unnecessary re-executions, as these values are converted to
-        javascript objects, and converting complex objects may not ensure
+        JavaScript objects, and converting complex objects may not ensure
         referential equality.
 
     Parameters
     ----------
-    callback: CallbackType
+    callback: C
         The callback function
     dependencies: Optional[List]
         The dependencies that will trigger a re-execution of the callback.
@@ -206,11 +201,11 @@ def use_effect(effect: "Callable" = None, dependencies: "Optional[List]" = None)
     if effect is None:
 
         def decorator(func):
-            return use_effect(func, dependencies)
+            return window.React.useEffect(func, dependencies)  # noqa: F821
 
         return decorator
-    effect = pyodide.ffi.create_once_callable(effect)
-    return js.React.useEffect(effect, pyodide.ffi.to_js(dependencies))
+    # TODO: add window to scoped variables as `js`
+    return window.React.useEffect(effect, dependencies)  # noqa: F821
 
 
 def use_body_style(styles):
@@ -219,16 +214,16 @@ def use_body_style(styles):
         original_styles = {}
         for key, value in styles.items():
             original_styles[key] = getattr(js.document.documentElement.style, key, "")
-            setattr(js.document.documentElement.style, key, value)
+            setattr(window.document.documentElement.style, key, value)  # noqa: F821
 
         # Cleanup function to revert back to the original styles
         def cleanup():
             for k, v in original_styles.items():
-                setattr(js.document.documentElement.style, k, v)
+                setattr(window.document.documentElement.style, k, v)  # noqa: F821
 
         return cleanup
 
-    use_effect(pyodide.ffi.create_once_callable(apply_styles), [str(styles)])
+    use_effect(apply_styles, [styles])
 
 
 @overload
@@ -243,10 +238,12 @@ def use_tracked(
 ) -> "TrackedListPretProxy": ...
 
 
-def use_tracked(proxy_object, name=None):
+@marshal_as(js="return window.valtio.useSnapshot")
+def use_tracked(proxy_object):
     """
     This hook is used to track the access made on a proxy object.
-    You can also use the returned object to change the proxy object.
+    You cannot use the returned object to change the proxy object, you
+    must mutate the original proxy(...) object directly.
 
     Parameters
     ----------
@@ -258,70 +255,22 @@ def use_tracked(proxy_object, name=None):
     TrackedProxyType
         A tracked proxy object
     """
-    proxy_object = get_untracked(proxy_object)
-    if not is_proxy(proxy_object):
-        raise ValueError("use_tracked can only be used with proxy objects")
-    last_snapshot = js.React.useRef(None)
-    last_affected = js.React.useRef(None)
-
-    # use to keep a reference on the tracked value.
-    # TODO: handle destruction of created proxies everywhere in the app
-    last_tracked = js.React.useRef(None)
-    in_render = True
-
-    def external_store_subscribe(callback):
-        unsub = subscribe(proxy_object, callback, notify_in_sync=False)
-        return unsub
-
-    def external_store_get_snapshot():
-        try:
-            next_snapshot = snapshot(proxy_object)
-        except KeyError as e:
-            print("Got key error !", e)
-            return js.undefined
-        if not in_render and last_snapshot.current and last_affected.current:
-            if not is_changed(
-                last_snapshot.current["wrapped"], next_snapshot, last_affected.current
-            ):
-                return last_snapshot.current
-
-        res = to_js(next_snapshot, wrap=True)
-        return res
-
-    # we don't use lambda's because of serialization issues
-    def make_proxied_external_store_subscribe():
-        return create_proxy(external_store_subscribe)
-
-    def make_proxied_external_store_get_snapshot():
-        return create_proxy(external_store_get_snapshot)
-
-    curr_snapshot = js.React.useSyncExternalStore(
-        js.React.useMemo(
-            make_proxied_external_store_subscribe,
-            pyodide.ffi.to_js([id(proxy_object)]),
-        ),
-        js.React.useMemo(
-            make_proxied_external_store_get_snapshot,
-            pyodide.ffi.to_js([id(proxy_object)]),
-        ),
-    )
-
-    in_render = False
-    curr_affected = dict()
-
-    # def side_effect():
-
-    # No dependencies, will run once after each render -> create_once_callable
-    # js.React.useEffect(pyodide.ffi.create_once_callable(side_effect))
-    res = tracked(curr_snapshot["wrapped"], curr_affected, proxy_object)
-
-    last_snapshot.current = curr_snapshot
-    last_affected.current = curr_affected
-    last_tracked.current = res
-    return res
 
 
-def use_event_callback(callback: "CallbackType"):
+@marshal_as(
+    js="""
+return function use_event_callback(callback) {
+    const callbackRef = window.React.useRef(callback);
+    callbackRef.current = callback;
+
+    return window.React.useCallback(
+        (function () {return callbackRef.current(...arguments)}),
+        [],
+    );
+}
+"""
+)
+def use_event_callback(callback: "C"):
     """
     This hook is used to store a callback function that will be called when an event
     is triggered. The callback function can be changed without triggering a re-render
@@ -334,23 +283,11 @@ def use_event_callback(callback: "CallbackType"):
 
     Parameters
     ----------
-    callback: CallbackType
+    callback: C
         The callback function
 
     Returns
     -------
-    CallbackType
+    C
         The wrapped callback function
     """
-
-    @functools.wraps(callback)
-    def wrapper(*args, **kwargs):
-        return callback_ref.current(*args, **kwargs)
-
-    callback = cached_to_js(callback)
-
-    wrapper_ref = js.React.useRef(pyodide.ffi.create_proxy(wrapper))
-    callback_ref = js.React.useRef(callback)
-    callback_ref.current = callback
-
-    return wrapper_ref.current.unwrap()

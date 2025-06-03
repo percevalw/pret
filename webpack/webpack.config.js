@@ -25,18 +25,6 @@ module.exports = (env) => ({
         }
       },
       {
-        test: /pyodide\.m?js$/,
-        use: [
-          {
-            loader: 'string-replace-loader',
-            options: {
-              search: /import\(/g,
-              replace: 'import(/* webpackIgnore: true */ ',
-            }
-          }
-        ]
-      },
-      {
         test: /\.m?js/,
         resolve: {
           fullySpecified: false

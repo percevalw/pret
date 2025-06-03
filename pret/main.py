@@ -12,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from pret.serialize import get_shared_pickler
+from pret.marshal import get_shared_marshaler
 from pret.serve import make_app
 
 
@@ -92,24 +92,24 @@ def build(
         build_dir = Path(build_dir)
         delete_build = False
 
-    pickler = get_shared_pickler()
-    pickle_file_str = ""
+    marshaler = get_shared_marshaler()
+    marshaler_file_str = ""
     for renderable in renderables:
-        pickle_file_str = renderable.bundle()[0]
+        marshaler_file_str = json.dumps(renderable.bundle()[0])
 
     # Extract js globals and them to a temp file to be bundled with webpack
-    js_globals, packages = extract_js_dependencies(pickler.accessed_global_refs)
+    js_globals, packages = extract_js_dependencies(marshaler.accessed_global_refs)
 
     js_globals_file = build_dir / "globals.ts"
-    content_hash = hashlib.md5(pickle_file_str.encode("utf-8")).hexdigest()[:20]
-    pickle_filename = f"bundle.{content_hash}.pkl"
+    content_hash = hashlib.md5(marshaler_file_str.encode("utf-8")).hexdigest()[:20]
+    bundle_filename = f"bundle.{content_hash}.pkl"
 
     if mode == BundleMode.MONOLITHIC:
         with js_globals_file.open("w") as f:
             f.write(js_globals)
 
-        with (static_dir / pickle_filename).open("w") as f:
-            f.write(pickle_file_str)
+        with (static_dir / bundle_filename).open("w") as f:
+            f.write(marshaler_file_str)
 
         webpack_config = Path(__file__).parent / "webpack.standalone.js"
         # fmt: off
@@ -148,13 +148,13 @@ def build(
                 "'__PRET_REMOTE_IMPORTS__'",
                 str([remote_name for _, remote_name in entries]),
             )
-            .replace("__PRET_PICKLE_FILE__", pickle_filename)
+            .replace("__PRET_PICKLE_FILE__", bundle_filename)
         )
 
         assets = {
             **base_static_mapping,
             **extension_static_mapping,
-            pickle_filename: pickle_file_str,
+            bundle_filename: marshaler_file_str,
             # override the index.html file in base_static_mapping
             "index.html": index_html_str,
         }
@@ -162,7 +162,7 @@ def build(
         # static_dir.mkdir(parents=True, exist_ok=True)
         # Include entry points in the index html file
 
-    yield assets, entries, pickle_filename
+    yield assets, entries, bundle_filename
 
     if delete_static:
         shutil.rmtree(static_dir)
@@ -183,7 +183,7 @@ def extract_js_dependencies(
 
     Parameters
     ----------
-    refs: List[pret.serialize.GlobalRef]
+    refs: List[pret.marshal.GlobalRef]
         List of Ref objects that were accessed during pickling
     exclude: List[str]
         List of module patterns to exclude from the js globals file
@@ -347,7 +347,7 @@ def run(
         )
         if bundle
         else contextlib.nullcontext({"*": Path(static_dir)})
-    ) as (assets, entries, pickle_filename):
+    ) as (assets, entries, bundle_filename):
         app = make_app(assets)
         if serve:
             app.run(debug=dev, port=port)
