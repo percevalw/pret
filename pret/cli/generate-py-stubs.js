@@ -147,10 +147,10 @@ function generateStubFunction(functionName, jsModuleName, jsFunctionName, props,
       ? `${name}: ${propsByName[name]}=None`
       : `${name}: ${propsByName[name]}`)
     .join(", ");
-  return (`def ${functionName}(${typedPropsString}):
-    """${jsDoc || ""}"""
-    return js.${jsModuleName}.${jsFunctionName}(*pyodide.ffi.to_js([${props.map(([name]) => name).join(", ")}], dict_converter=js.Object.fromEntries));
-${functionName}._inner_fn = js.${jsModuleName}.${jsFunctionName}`);
+  return (`
+@marshal_as(js.${jsModuleName}.${jsFunctionName})
+def ${functionName}(${typedPropsString}):
+    """${jsDoc || ""}"""`);
 }
 
 
@@ -452,9 +452,9 @@ import * as MODULE from "${packagePath}";`
       }).join("\n"));
   const moduleString = `
 import sys
-from typing import Any, Union
+from typing import Any, Union, List
 from pret.render import stub_component
-from pret.bridge import make_stub_js_module, js, pyodide
+from pret.marshal import js, make_stub_js_module, marshal_as
 
 __version__ = "${version}"
 _py_package_name = "${pyPackageName}"

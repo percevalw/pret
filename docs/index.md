@@ -52,7 +52,7 @@ def TodoApp():
 
     def on_key_down(event):
         if event.key == "Enter":
-            todos[typed] = False
+            state[typed] = False
             set_typed("")
 
     return Stack(
@@ -60,7 +60,7 @@ def TodoApp():
             Checkbox(
                 label=todo,
                 checked=ok,
-                on_change=lambda e, t=todo: todos.update({t: e.target.checked}),
+                on_change=lambda e, t=todo: state.update({t: e.target.checked}),
             )
             for todo, ok in todos.items()
         ),

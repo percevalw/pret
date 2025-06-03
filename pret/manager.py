@@ -1,36 +1,88 @@
-import asyncio
+"""
+This module provides client and server managers for handling remote calls,
+state synchronization, and communication between the frontend and backend.
+"""
+
 import hashlib
 import inspect
-import json
-import linecache
-import sys
-import traceback
-import uuid
+import time
 from asyncio import Future
-from types import FunctionType
-from typing import Any, Callable
+from json import dumps
+from typing import Any, Awaitable, Callable, Union
 from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 
-from ipykernel.comm import Comm
+from typing_extensions import ParamSpec, TypeVar
 
-from pret.bridge import js, pyodide
-from pret.serialize import pickle_as
+from pret.marshal import marshal_as
+from pret.state import patch, subscribe
 
-
-def get_formatted_exception():
-    try:
-        exc_type, exc_obj, tb = sys.exc_info()
-        f = tb.tb_frame
-        lineno = tb.tb_lineno
-        filename = f.f_code.co_filename
-        linecache.checkcache(filename)
-        line = linecache.getline(filename, lineno, f.f_globals)
-        return f'Exception: {exc_obj}\nin "{line.strip()}"\nat {filename}:{lineno}'
-    except Exception as e:
-        return f"Exception: {e}"
+CallableParams = ParamSpec("ServerCallableParams")
+CallableReturn = TypeVar("CallableReturn")
 
 
-def function_identifier(func: FunctionType):
+def make_remote_callable(function_id):
+    async def remote_call(*args, **kwargs):
+        return await get_manager().send_call(function_id, *args, **kwargs)
+
+    return remote_call
+
+
+def server_only(
+    fn: Callable[CallableParams, CallableReturn],
+) -> Callable[CallableParams, Union[Awaitable[CallableReturn], CallableReturn]]:
+    return marshal_as(fn, make_remote_callable(get_manager().register_function(fn)))
+
+
+@marshal_as(
+    js="""
+       return function is_awaitable(value) {
+           return true;
+       }
+       """,
+    globals={},
+)
+def is_awaitable(value):
+    """If the value is an awaitable, await it, otherwise return the value."""
+    return inspect.isawaitable(value)
+
+
+@marshal_as(
+    js="""
+return function start_async_task(task) {
+    return task;
+}
+""",
+    globals={},
+)
+def start_async_task(task):
+    """Start an async task and return it."""
+    import asyncio
+
+    asyncio.create_task(task)
+
+
+@marshal_as(
+    js="""
+return (resource, options) => {
+    return fetch(resource, options);
+}
+""",
+    globals={},
+)
+def fetch(resource, options): ...
+
+
+@marshal_as(
+    js="""
+return function function_identifier(func) {
+    throw new Error("function_identifier is not implemented in JavaScript");
+}
+""",
+    globals={},
+)
+def function_identifier(func):
+    import inspect
+
     module = inspect.getmodule(func)
     module_name = module.__name__
     qual_name = func.__qualname__
@@ -77,13 +129,17 @@ class weakmethod:
 
 
 class Manager:
+    manager = None
+
     def __init__(self):
         # Could we simplify this by having one dict: sync_id -> (state, unsubscribe) ?
         # This would require making a custom WeakValueDictionary that can watch
         # the content of the value tuples
         self.functions = WeakValueDictionary()
-        self.states: WeakValueDictionary[str, Any] = WeakValueDictionary()
-        self.states_unsubcribe: WeakKeyDictionary[Any, Callable] = WeakKeyDictionary()
+        self.states: "WeakValueDictionary[str, Any]" = WeakValueDictionary()
+        self.states_unsubscribe: "WeakKeyDictionary[Any, Callable]" = (
+            WeakKeyDictionary()
+        )
         self.call_futures = {}
         self.disabled_state_sync = set()
 
@@ -106,24 +162,15 @@ class Manager:
         try:
             fn = self.functions[function_id]
             # check coroutine or sync function
-            if inspect.iscoroutinefunction(fn):
-                result = await fn(*args, **kwargs)
-            else:
-                result = fn(*args, **kwargs)
-
-            return (
-                "call_success",
-                {
-                    "callback_id": callback_id,
-                    "value": result,
-                },
-            )
-        except Exception:
+            result = fn(*args, **kwargs)
+            result = (await result) if is_awaitable(result) else result
+            return "call_success", {"callback_id": callback_id, "value": result}
+        except Exception as e:
             return (
                 "call_failure",
                 {
                     "callback_id": callback_id,
-                    "message": get_formatted_exception(),
+                    "message": str(e),
                 },
             )
 
@@ -140,55 +187,56 @@ class Manager:
         future.set_exception(Exception(message))
 
     def send_call(self, function_id, *args, **kwargs):
-        try:
-            callback_id = str(uuid.uuid4())
-            message_future = self.send_message(
-                "call",
-                {
-                    "function_id": function_id,
-                    "args": args,
-                    "kwargs": kwargs,
-                    "callback_id": callback_id,
-                },
-            )
-            if inspect.isawaitable(message_future):
-                asyncio.create_task(message_future)
-            future = Future()
-            self.register_call_future(callback_id, future)
-            return future
-        except Exception:
-            traceback.print_exc()
+        callback_id = str(time.time())
+        message_future = self.send_message(
+            "call",
+            {
+                "function_id": function_id,
+                "args": args,
+                "kwargs": kwargs,
+                "callback_id": callback_id,
+            },
+        )
+        if is_awaitable(message_future):
+            start_async_task(message_future)
+        future = Future()
+        self.register_call_future(callback_id, future)
+        return future
 
     def register_call_future(self, callback_id, future):
         self.call_futures[callback_id] = future
 
     def register_state(self, sync_id, state, unsubscribe):
         self.states[sync_id] = state
-        self.states_unsubcribe[state] = unsubscribe
+        self.states_unsubscribe[state] = unsubscribe
 
     def handle_state_change(self, ops, sync_id):
         state = self.states[sync_id]
-        resubscribe = self.states_unsubcribe[state]()
-        self.states[sync_id]._patch(ops)
-        self.states_unsubcribe[state] = resubscribe()
+        self.states_unsubscribe[state]()
+
+        patch(state, ops)
+
+        unsub = subscribe(state, lambda ops: self.send_state_change(ops, sync_id))
+        self.states_unsubscribe[state] = unsub
 
     def send_state_change(self, ops, sync_id):
         self.send_message(method="state_change", data={"ops": ops, "sync_id": sync_id})
 
-    def register_function(self, function: FunctionType) -> str:
-        identifier = function_identifier(function)
-        self.functions[identifier] = function
+    def register_function(self, fn) -> str:
+        identifier = function_identifier(fn)
+        self.functions[identifier] = fn
         return identifier
 
 
-# noinspection PyUnboundLocalVariable
 class JupyterServerManager(Manager):
     def __init__(self):
-        super(JupyterServerManager, self).__init__()
+        super().__init__()
         self.comm = None
         self.open()
 
     def open(self):
+        from ipykernel.comm import Comm
+
         """Open a comm to the frontend if one isn't already open."""
         if self.comm is None:
             # It seems that if we create a comm to early, the client might
@@ -232,10 +280,11 @@ class JupyterServerManager(Manager):
         self.close()
 
     def __reduce__(self):
-        return JupyterClientManager, ()
+        return get_manager, ()
 
-    async def send_awaitable_message(self, awaitable):
-        result = await awaitable
+    async def _await_and_send_message(self, result):
+        if is_awaitable(result):
+            result = await result
         if result is not None:
             self.send_message(*result)
 
@@ -251,8 +300,9 @@ class JupyterServerManager(Manager):
         result = self.handle_message(method, data)
         if result is not None:
             # check awaitable, and send back message if resolved is not None
-            if inspect.isawaitable(result):
-                asyncio.create_task(self.send_awaitable_message(result))
+            result = self._await_and_send_message(result)
+            if is_awaitable(result):
+                start_async_task(result)
 
 
 class JupyterClientManager(Manager):
@@ -266,21 +316,42 @@ class JupyterClientManager(Manager):
     def send_message(self, method, data):
         if self.env_handler is None:
             raise Exception("No environment handler set")
-        self.env_handler.sendMessage(
-            method, pyodide.ffi.to_js(data, dict_converter=js.Object.fromEntries)
+        self.env_handler.sendMessage(method, data)
+
+
+class StandaloneClientManager(Manager):
+    def __init__(self):
+        super().__init__()
+
+    async def send_message(self, method, data):
+        response = await fetch(
+            "method",
+            {
+                "method": "POST",
+                "body": dumps({"method": method, "data": data}),
+                "headers": {"Content-Type": "application/json"},
+            },
         )
+        result = await response.json()
+        if "method" in result and "data" in result:
+            future = self.handle_message(result["method"], result["data"])
+            if is_awaitable(future):
+                await future
 
 
+@marshal_as(StandaloneClientManager)
 class StandaloneServerManager(Manager):
     def __init__(self):
         super().__init__()
         self.connections = {}
-        self._dillable = StandaloneClientManager()
+        # marshal_as(self, StandaloneClientManager())
 
-    # def __reduce__(self):
-    #     return StandaloneClientManager, ()
+    def __reduce__(self):
+        return get_manager, ()
 
     def register_connection(self, connection_id):
+        import asyncio
+
         queue = asyncio.Queue()
         self.connections[connection_id] = queue
         return queue
@@ -297,27 +368,9 @@ class StandaloneServerManager(Manager):
     async def handle_websocket_msg(self, data, connection_id):
         result = self.handle_message(data["method"], data["data"])
         if result is not None:
-            if inspect.isawaitable(result):
+            if is_awaitable(result):
                 result = await result
             self.send_message(*result, connection_ids=[connection_id])
-
-
-class StandaloneClientManager(Manager):
-    def __init__(self):
-        super(StandaloneClientManager, self).__init__()
-
-    async def send_message(self, method, data):
-        response = await pyodide.http.pyfetch(
-            "method",
-            method="POST",
-            body=json.dumps({"method": method, "data": data}),
-            headers={"Content-Type": "application/json"},
-        )
-        result = await response.json()
-        if "method" in result and "data" in result:
-            future = self.handle_message(result["method"], result["data"])
-            if inspect.isawaitable(future):
-                await future
 
 
 def check_jupyter_environment():
@@ -333,37 +386,31 @@ def check_jupyter_environment():
 
 
 def make_get_manager() -> Callable[[], Manager]:
-    manager = None
-
     def get_jupyter_client_manager():
-        nonlocal manager
-        if manager is None:
-            manager = JupyterClientManager()
+        if JupyterClientManager.manager is None:
+            JupyterClientManager.manager = JupyterClientManager()
 
-        return manager
+        return JupyterClientManager.manager
 
-    @pickle_as(get_jupyter_client_manager)
+    @marshal_as(get_jupyter_client_manager)
     def get_jupyter_server_manager():
-        nonlocal manager
-        if manager is None:
-            manager = JupyterServerManager()
+        if JupyterServerManager.manager is None:
+            JupyterServerManager.manager = JupyterServerManager()
 
-        return manager
+        return JupyterServerManager.manager
 
     def get_standalone_client_manager():
-        nonlocal manager
-        if manager is None:
-            manager = StandaloneClientManager()
+        if StandaloneClientManager.manager is None:
+            StandaloneClientManager.manager = StandaloneClientManager()
 
-        return manager
+        return StandaloneClientManager.manager
 
-    @pickle_as(get_standalone_client_manager)
+    @marshal_as(get_standalone_client_manager)
     def get_standalone_server_manager():
-        nonlocal manager
-        if manager is None:
-            manager = StandaloneServerManager()
+        if StandaloneServerManager.manager is None:
+            StandaloneServerManager.manager = StandaloneServerManager()
 
-        return manager
+        return StandaloneServerManager.manager
 
     # check if we are in a jupyter environment
     if check_jupyter_environment():

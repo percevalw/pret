@@ -4,7 +4,7 @@ Here are step-by-step guides to get you started.
 
 <!-- --8<-- [start:tutorials] -->
 
-=== card {: href=/tutorials/create-your-first-component }
+=== card {: href=/tutorials/create-your-first-component/ }
 
     :fontawesome-regular-file-code:
     **Your first component**
@@ -12,7 +12,7 @@ Here are step-by-step guides to get you started.
     ---
     Learn the basics of composing a UI component with Pret.
 
-=== card {: href=/tutorials/sharing-state }
+=== card {: href=/tutorials/sharing-state/ }
 
     :fontawesome-solid-book:
     **Sharing state**
@@ -20,7 +20,7 @@ Here are step-by-step guides to get you started.
     ---
     Learn how to manage the state of your app and share it between multiple components.
 
-=== card {: href=/tutorials/tictactoe }
+=== card {: href=/tutorials/tictactoe/ }
 
     :fontawesome-regular-calendar:
     **Tic Tac Toe**
@@ -28,7 +28,7 @@ Here are step-by-step guides to get you started.
     ---
     Building what we have learned in the previous tutorials, let's build a Tic Tac Toe game.
 
-=== card {: href=/tutorials/interacting-with-the-server }
+=== card {: href=/tutorials/interacting-with-the-server/ }
 
     :fontawesome-regular-square-check:
     **Interacting with the server**
