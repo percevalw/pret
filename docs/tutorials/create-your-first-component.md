@@ -77,12 +77,11 @@ Now that we have a list of todos, we want to be able to mark them as done or not
 
 ```{ .python .render-with-pret }
 from pret.ui.joy import Checkbox, Stack
-from pret.bridge import js  # (1)!
 
 
 def on_change(event):
     checked = event.target.checked
-    js.alert(f"Todo {'checked' if checked else 'unchecked'}")
+    alert(f"Todo {'checked' if checked else 'unchecked'}")
 
 
 Checkbox(
@@ -91,8 +90,6 @@ Checkbox(
     on_change=on_change,
 )
 ```
-
-1. We import the `js` object from the `pret.bridge` module. This object allows us to interact with the browser's JavaScript global variables, such as [`alert`](https://developer.mozilla.org/en-US/docs/Web/API/Window/alert).
 
 ## Adding state
 

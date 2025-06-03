@@ -19,7 +19,7 @@ def TodoApp():
 
     def on_key_down(event):
         if event.key == "Enter":
-            todos[typed] = False
+            state[typed] = False
             set_typed("")
 
     return div(
@@ -29,7 +29,7 @@ def TodoApp():
                     checked=ok,
                     type="checkbox",
                     id=todo.replace(" ", "-"),
-                    on_change=lambda e, t=todo: todos.update({t: e.target.checked}),
+                    on_change=lambda e, t=todo: state.update({t: e.target.checked}),
                 ),
                 label(todo, **{"for": todo.replace(" ", "-")}),
             )

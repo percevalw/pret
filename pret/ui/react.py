@@ -1,7 +1,7 @@
 import sys
 from typing import Any, Union
 
-from pret.bridge import js, make_stub_js_module, pyodide
+from pret.marshal import make_stub_js_module, js
 from pret.render import stub_component
 
 if sys.version_info >= (3, 8):
@@ -303,6 +303,10 @@ props_mapping = {
 
 @stub_component(js.React.Fragment, props_mapping)
 def Fragment(*children): ...
+
+
+@stub_component(js.React.Suspense, props_mapping)
+def Suspense(*children, fallback: Any): ...
 
 
 @stub_component("a", props_mapping)

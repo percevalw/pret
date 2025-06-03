@@ -53,7 +53,7 @@ nav:
   #     - concepts/proxy-state.md
   #     - concepts/running-your-app.md
   - Reference: reference/
-  - changelog.md
+  - Changelog: changelog.md
 
 extra:
   version:

@@ -56,9 +56,8 @@ def TicTacToe():
 
     def on_click_square(idx):
         # if the game is over, clean everything on click
-        if state["winning_pattern"] or 0 not in state["board"]:
-            print("winning", state["winning_pattern"], "no zero", 0 not in state["board"])
-            state["board"][:] = [0] * 9
+        if bool(state["winning_pattern"]) or 0 not in state["board"]:
+            state["board"][:] = [0 for _ in range(9)]
             state["winning_pattern"] = []
             return
 
@@ -80,9 +79,7 @@ def TicTacToe():
                 "X" if square == 2 else "O" if square == 1 else "",
                 on_click=lambda event, idx=idx: on_click_square(idx),
                 style=(
-                    WINNING_SQUARE_STYLE
-                    if idx in winning_pattern else
-                    SQUARE_STYLE
+                    WINNING_SQUARE_STYLE if idx in winning_pattern else SQUARE_STYLE
                 ),
             )
             for idx, square in enumerate(tracked["board"])

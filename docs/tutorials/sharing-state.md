@@ -51,7 +51,7 @@ Now that we have a state object, we can use it in our components. To let Pret kn
 - the component will re-render
 - the snapshot will be different from the previous one (meaning, we don't have the `new_todos is todos` issue mentioned earlier)
 
-```{ .python .render-with-pret }
+```python { .render-with-pret }
 from pret import component, use_tracked, proxy
 from pret.ui.joy import Checkbox, Stack
 
@@ -67,17 +67,17 @@ state = proxy({
 def TodoList():  # (1)!
     todos = use_tracked(state["todos"])
 
-    def on_change(event, todo):
-        todo["done"] = event.target.checked
+    def on_change(event, i):
+        state["todos"][i]["done"] = event.target.checked
 
     return Stack(
         [
             Checkbox(
                 label=todo["text"],
                 checked=todo["done"],
-                on_change=lambda event, todo=todo: on_change(event, todo),
+                on_change=lambda event, i=i: on_change(event, i),
             )
-            for todo in todos
+            for i, todo in enumerate(todos)
         ],
         spacing=2,
     )
@@ -95,7 +95,7 @@ Sharing state between components is now straightforward.
 Let's display the number of remaining todos in the list. We will
 use the same `state` object as the component above.
 
-```{ .python .render-with-pret }
+```python { .render-with-pret }
 from pret.ui.joy import Typography
 from pret.ui.react import br
 

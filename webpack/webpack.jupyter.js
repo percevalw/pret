@@ -20,18 +20,6 @@ module.exports = {
       // https://github.com/pyodide/pyodide-webpack-plugin/blob/9112d85/README.md?plain=1#L100-L119
       // to replace all import occurrences instead of just the first one
       {
-        test: /pyodide\.m?js$/,
-        use: [
-          {
-            loader: 'string-replace-loader',
-            options: {
-              search: /import\(/g,
-              replace: 'import(/* webpackIgnore: true */ ',
-            }
-          }
-        ]
-      },
-      {
         test: /\.m?js/,
         resolve: {
           fullySpecified: false

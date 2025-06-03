@@ -12,10 +12,10 @@ dynamic = ["version"]
 requires-python = ">=3.7,<4.0,!=3.8.1"
 dependencies = [
     "ipykernel",
-    "dill",
     "quart",
     "typer",
     "pygetsource",
+    "cbor2",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -55,6 +55,7 @@ dev = [
     "hatchling",
     "hatch-jupyter-builder",
     "pret-joy",
+    "transcrypt @ {root:uri}/vendor/transcrypt",
 ]
 docs = [
     "mike~=1.1.2",
@@ -126,9 +127,15 @@ build-kwargs = { "build_cmd" = "build", "npm" = ["jlpm"] }
 editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 
 [tool.hatch.build]
-dev-mode-dirs = ["."]
 artifacts = [
-    "pret"
+    "pret",
+    "vendor/transcrypt/transcrypt/modules"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "pret",
+    "vendor/transcrypt/transcrypt",
 ]
 
 [tool.hatch.build.targets.wheel.shared-data]
@@ -167,3 +174,6 @@ combine-reports = [
     "npx playwright merge-reports --reporter html ./blob-report",
     "rm -rf ./blob-report"
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
