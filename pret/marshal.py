@@ -28,14 +28,13 @@ from typing import Any, Callable, Dict, Union
 from weakref import WeakKeyDictionary
 
 import astunparse
-from cbor2._encoder import (
-    CBOREncoder,
-    CBOREncodeTypeError,
-    CBOREncodeValueError,
-    CBORTag,
-    shareable_encoder,
-)
 from transcrypt.__main__ import main as transcrypt
+
+try:
+    import cbor2._encoder as cbor2_encoder
+except ImportError:
+    # Python 3.7 and earlier do not have cbor2._encoder
+    import cbor2.encoder as cbor2_encoder
 
 ModuleType = type(sys)
 BuiltinFunctionType = type(time.time)
@@ -282,7 +281,7 @@ def inspect_scopes(f):
     return {**globals_vals, **closure_vals}
 
 
-class StrictCBOREncoder(CBOREncoder):
+class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for base, marshaled in marshal_overrides.items():
@@ -292,13 +291,13 @@ class StrictCBOREncoder(CBOREncoder):
 
     def _find_encoder(
         self, obj_type: type
-    ) -> "Callable[[CBOREncoder, Any], None] | None":
+    ) -> "Callable[[cbor2_encoder.CBOREncoder, Any], None] | None":
         for type_or_tuple, enc in list(self._encoders.items()):
             if type(type_or_tuple) is tuple:
                 try:
                     modname, typename = type_or_tuple
                 except (TypeError, ValueError):
-                    raise CBOREncodeValueError(
+                    raise cbor2_encoder.CBOREncodeValueError(
                         f"invalid deferred encoder type {type_or_tuple!r} (must be a "
                         "2-tuple of module name and type name, e.g. "
                         "('collections', 'defaultdict'))"
@@ -326,7 +325,9 @@ class StrictCBOREncoder(CBOREncoder):
         else:
             encoder = self._find_encoder(obj_type) or self._default
         if not encoder:
-            raise CBOREncodeTypeError(f"cannot serialize type {obj_type.__name__}")
+            raise cbor2_encoder.CBOREncodeTypeError(
+                f"cannot serialize type {obj_type.__name__}"
+            )
 
         encoder(self, obj)
 
@@ -335,7 +336,7 @@ class Pretmarshaler:
     def __init__(self):
         self.source_codes = {}
         self.accessed_global_refs = set()
-        self.encoder = shareable_encoder(self._encoder)
+        self.encoder = cbor2_encoder.shareable_encoder(self._encoder)
         self.id = uuid.uuid4().hex
         self.chunk_idx = 0
         self._file = BytesIO()
@@ -511,7 +512,9 @@ class Pretmarshaler:
                     )
                     self.source_codes[source_code_id] = ("js", factory_code)
                     encoder.encode(
-                        CBORTag(4000, [source_code_id, list(globals.values())])
+                        cbor2_encoder.CBORTag(
+                            4000, [source_code_id, list(globals.values())]
+                        )
                     )
                     return
             elif getattr(value, "__module__", None) in PRE_TRANSPILED_MODULES:
@@ -523,7 +526,7 @@ class Pretmarshaler:
                     f"  return {value.__name__}\n"
                 )
                 self.source_codes[source_code_id] = ("py", factory_code)
-                encoder.encode(CBORTag(4000, [source_code_id, []]))
+                encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
                 return
             elif (
                 isinstance(value, ModuleType)
@@ -535,7 +538,7 @@ class Pretmarshaler:
                     f"  return module\n"
                 )
                 self.source_codes[source_code_id] = ("py", factory_code)
-                encoder.encode(CBORTag(4000, [source_code_id, []]))
+                encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
                 return
             elif isinstance(value, (FunctionType, BuiltinFunctionType)):
                 # code = pygetsource.getfactory(value.__code__, function_name="_fn_")
@@ -566,7 +569,9 @@ class Pretmarshaler:
                 factory_code = astunparse.unparse(factory)
                 self.source_codes[source_code_id] = ("py", factory_code)
                 encoder.encode(
-                    CBORTag(4000, [source_code_id, list(scoped_vars.values())])
+                    cbor2_encoder.CBORTag(
+                        4000, [source_code_id, list(scoped_vars.values())]
+                    )
                 )
                 return
             elif isinstance(value, type):
@@ -609,7 +614,7 @@ class Pretmarshaler:
                     if isinstance(member[1], FunctionType)
                 ]
                 encoder.encode(
-                    CBORTag(
+                    cbor2_encoder.CBORTag(
                         4001,
                         [
                             value.__name__,
@@ -638,10 +643,12 @@ class Pretmarshaler:
                             f"export {{{source_code_id}}};\n"
                         )
                         self.source_codes[source_code_id] = ("js", factory_code)
-                        encoder.encode(CBORTag(4000, [source_code_id, []]))
+                        encoder.encode(
+                            cbor2_encoder.CBORTag(4000, [source_code_id, []])
+                        )
                         return
                     else:
-                        encoder.encode(CBORTag(4002, reduced))
+                        encoder.encode(cbor2_encoder.CBORTag(4002, reduced))
                         return
                 else:
                     try:
@@ -649,7 +656,9 @@ class Pretmarshaler:
                     except AttributeError:
                         state = {}
                     encoder.encode(
-                        CBORTag(4003, [type(value), state, type(value).__name__])
+                        cbor2_encoder.CBORTag(
+                            4003, [type(value), state, type(value).__name__]
+                        )
                     )
                     return
             raise ValueError()
