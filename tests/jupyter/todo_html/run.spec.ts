@@ -1,4 +1,4 @@
-let {expect, test} = require("@jupyterlab/galata");
+let { expect, test } = require("@jupyterlab/galata");
 
 // JUPYTERLAB_VERSION is set in run.sh
 if (process.env.JUPYTERLAB_VERSION < "4") {
@@ -13,7 +13,11 @@ test.afterEach(async ({ page }, testInfo) => {
     // Get a unique place for the screenshot.
     const screenshotPath = testInfo.outputPath(`failure.png`);
     // Add it to the report.
-    testInfo.attachments.push({ name: 'screenshot', path: screenshotPath, contentType: 'image/png' });
+    testInfo.attachments.push({
+      name: "screenshot",
+      path: screenshotPath,
+      contentType: "image/png",
+    });
     // Take the screenshot itself.
     await page.screenshot({ path: screenshotPath, timeout: 1000 });
   }
@@ -23,7 +27,9 @@ test.describe("Notebook Tests", () => {
   test("TodoHTML", async ({ page, tmpPath }) => {
     const fileName = "todo_html/TodoHTML.ipynb";
     await page.notebook.openByPath(fileName);
-    await page.waitForSelector(".jp-Notebook-ExecutionIndicator[data-status=idle]");
+    await page.waitForSelector(
+      ".jp-Notebook-ExecutionIndicator[data-status=idle]"
+    );
     await page.waitForTimeout(1000);
     await page.notebook.runCell(0, true);
 
@@ -31,10 +37,14 @@ test.describe("Notebook Tests", () => {
     await page.waitForSelector(".pret-view");
 
     // Check that input checkbox "faire à manger" is present
-    const checkbox = await page.waitForSelector("#faire-à-manger");
+    const checkbox = await page.waitForSelector("#faire-à-manger", {
+      state: "attached",
+    });
     expect(checkbox).toBeTruthy();
 
-    let desc = await page.waitForSelector(".pret-view p");
+    let desc = await page.waitForSelector(".pret-view p", {
+      state: "attached",
+    });
     let expectedDescText = "Number of unfinished todo: 1";
     expect(await desc.textContent()).toEqual(expectedDescText);
 
@@ -42,7 +52,7 @@ test.describe("Notebook Tests", () => {
     await checkbox.click();
     await page.waitForTimeout(1000);
 
-    desc = await page.waitForSelector(".pret-view p");
+    desc = await page.waitForSelector(".pret-view p", { state: "attached" });
     expectedDescText = "Number of unfinished todos: 2";
     expect(await desc.textContent()).toEqual(expectedDescText);
 
@@ -51,7 +61,8 @@ test.describe("Notebook Tests", () => {
     await page.notebook.runCell(1, true);
     await page.waitForTimeout(1000);
     const output = await page.waitForSelector(
-      ".jp-Notebook > :nth-child(2) .jp-OutputArea-output pre"
+      ".jp-Notebook > :nth-child(2) .jp-OutputArea-output pre",
+      { state: "attached" }
     );
 
     expect(await output.textContent()).toEqual("False\n");
@@ -60,9 +71,8 @@ test.describe("Notebook Tests", () => {
     await page.notebook.addCell("code", "state['faire à manger'] = True");
     await page.notebook.runCell(2, true);
     await page.waitForTimeout(1000);
-    desc = await page.waitForSelector(".pret-view p");
+    desc = await page.waitForSelector(".pret-view p", { state: "attached" });
     expectedDescText = "Number of unfinished todo: 1";
     expect(await desc.textContent()).toEqual(expectedDescText);
-
   });
 });
