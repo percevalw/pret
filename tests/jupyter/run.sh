@@ -24,6 +24,11 @@ echo "Pret installed package"
 pip show -f pret
 
 JUPYTERLAB_VERSION=$(pip show jupyterlab -V | grep Version | cut -d' ' -f2)
+if [ -z "$JUPYTERLAB_VERSION" ]; then
+  echo "Jupyter Lab is not installed"
+  exit 1
+fi
+echo "Jupyter Lab version: $JUPYTERLAB_VERSION"
 # Will be read in *.spec.ts files
 export JUPYTERLAB_VERSION
 
