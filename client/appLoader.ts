@@ -26,7 +26,6 @@ addExtension({
   Class: null,
   encode: null,
   decode([factoryName, closureArgs]: [string, any[]]) {
-    console.log(factoryName, closureArgs);
     return factories[factoryName](...closureArgs);
   },
 });
