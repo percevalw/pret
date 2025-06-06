@@ -39,4 +39,4 @@ jobs:
       - name: Build docs
         run: |
           git fetch origin gh-pages
-          hatch -e docs run mike deploy --push --no-redirect --update-aliases main latest
+          hatch -e docs run mike deploy --push --alias-type=copy --update-aliases main latest

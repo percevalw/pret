@@ -165,7 +165,7 @@ jobs:
 
       - name: Build docs
         run: |
-          hatch -e docs run mike deploy --no-redirect --rebase --update-aliases $BRANCH_NAME latest
+          hatch -e docs run mike deploy --alias-type=copy --update-aliases $BRANCH_NAME latest
           hatch -e docs run mike set-default $BRANCH_NAME
 
       - name: Put content of gh-pages to public folder
