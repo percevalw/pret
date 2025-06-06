@@ -14,7 +14,7 @@ pip install pret pret-joy  --user
 
 ## Features
 
-- **Write Python**: pret is written for Python developers: you can write your both your UI and server actions in Python.
+- **Python, only Python**: pret is written in Python: you can write your both your UI and server actions Python. No need to learn a new language, or to use a transpiler.
 - **Client-side rendering**: unlike other Python UI frameworks, pret runs primarily in the browser. This enables a fast response time to user actions (like hover events), and a better user experience under degraded network conditions.
 - **Built on React**: pret uses React as a rendering engine, and benefits from its ecosystem.
 - **Reactive**: unlike other solutions like ipywidgets, pret is reactive. Only the parts of the UI that need to be updated are re-rendered.
@@ -34,7 +34,7 @@ Let's write a simple todo app that should:
 
 Copy and paste the following code in a notebook:
 
-```python
+```python { .render-with-pret }
 from pret import component, proxy, run, use_state, use_tracked
 from pret.ui.joy import Checkbox, Input, Stack, Typography
 
@@ -56,7 +56,7 @@ def TodoApp():
 
     def on_key_down(event):
         if event.key == "Enter":
-            todos[typed] = False
+            state[typed] = False
             set_typed("")
 
     return Stack(
@@ -64,7 +64,7 @@ def TodoApp():
             Checkbox(
                 label=todo,
                 checked=ok,
-                on_change=lambda e, t=todo: todos.update({t: e.target.checked}),
+                on_change=lambda e, t=todo: state.update({t: e.target.checked}),
             )
             for todo, ok in todos.items()
         ),
@@ -75,7 +75,8 @@ def TodoApp():
             placeholder="Add a todo",
         ),
         Typography(
-            f"Number of unfinished todo{plural}: {num_remaining}", level="body-md"
+            f"Number of unfinished todo{plural}: {num_remaining}",
+            sx={"minWidth": "230px"},  # just to avoid jittering when it's centered
         ),
         spacing=2,
         sx={"m": 1},
@@ -85,14 +86,12 @@ def TodoApp():
 TodoApp()
 ```
 
-![Demo Gif](./docs/assets/demo.gif)
-
 In comparison, the closest alternative using ipywidgets looks like the following snippet:
 
 <details>
 <summary>IPyWidget's implementation</summary>
 
-```python
+```python { .no-exec }
 import ipywidgets as widgets
 
 state = {
