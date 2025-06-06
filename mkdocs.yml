@@ -69,10 +69,7 @@ extra:
 #       lang: fr
 
 extra_css:
-  - assets/stylesheets/override.css
   - assets/stylesheets/extra.css
-  - assets/stylesheets/cards.css
-  - assets/termynal/termynal.css
 
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/vega@5
@@ -84,11 +81,16 @@ watch:
   - changelog.md
   - pret
 
-hooks:
-    - docs/scripts/plugin.py
-
 plugins:
-  - search
+  - auto_gen_pages:
+      package_dirs: ["pret"]
+      reference_section: Reference
+      exclude_glob: assets/fragments/*
+      copy_files:
+        changelog.md: changelog.md
+  - fix_fonts:
+  - cards:
+  - search:
   - minify:
       minify_html: true
       minify_js: true
@@ -100,7 +102,8 @@ plugins:
       priority:
         - .*
         - reference
-  - pret_snippet_renderer
+  - pret_snippet_renderer:
+  - mkdocstrings_options_templates:
   - mkdocstrings:
       enable_inventory: true
       custom_templates: docs/assets/templates
@@ -116,7 +119,7 @@ plugins:
             merge_init_into_class: true
   - bibtex:
       bibtex_file: "docs/references.bib"
-  - clickable_snippets:
+  - clickable_code:
 # Just uncomment the following lines to enable i18n
 # and start creating .fr.md and .en.md files.
 #  - i18n:
@@ -148,7 +151,6 @@ markdown_extensions:
   - pymdownx.emoji:
       emoji_index: !!python/name:materialx.emoji.twemoji
       emoji_generator: !!python/name:materialx.emoji.to_svg
-  - docs.scripts.cards
 
 validation:
   absolute_links: ignore

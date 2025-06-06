@@ -117,7 +117,7 @@ function generateComponentStubFunction(componentName, jsModuleName, props, jsDoc
   let paramDocs = Array
     .from(new Set(props.map(([name]) => name)))
     .filter(name => propsByName[name]["doc"])
-    .map(name => `${name}: ${propsByName[name]["type"]}` + (propsByName[name]["doc"] ? `\n    ${propsByName[name]["doc"]}` : ""))
+    .map(name => `${name}: ${propsByName[name]["type"]}` + (propsByName[name]["doc"] ? `\n    ${propsByName[name]["doc"].trim()}` : ""))
     .join("\n");
   if (paramDocs.length > 0) {
     jsDoc = jsDoc + `\n\nParameters\n----------\n${paramDocs}`;
@@ -263,7 +263,7 @@ function getFunctionProps(name, sourceString, snakeCaseMapping) {
       let paramName = tag.text[0].text;
       // doc of the param is all the parts of the .text array field with kind `text`
       let paramDoc = tag.text.map((part) => part.kind === "text" ? part.text : "").join(" ");
-      paramNameToDoc[paramName] = paramDoc;
+      paramNameToDoc[paramName] = paramDoc.trim();
     }
   }
   // Get each argument's name and type
@@ -324,7 +324,7 @@ function getComponentProps(name, sourceString, snakeCaseMapping) {
       }
       // doc of the param is all the parts of the .text array field with kind `text`
       let paramDoc = tag.text.map((part) => part.kind === "text" ? part.text : "").join(" ");
-      paramNameToDoc[paramName] = paramDoc;
+      paramNameToDoc[paramName] = paramDoc.trim();
     }
   }
   return {
