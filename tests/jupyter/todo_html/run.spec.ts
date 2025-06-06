@@ -18,8 +18,13 @@ test.afterEach(async ({ page }, testInfo) => {
       path: screenshotPath,
       contentType: "image/png",
     });
-    // Take the screenshot itself.
-    await page.screenshot({ path: screenshotPath, timeout: 1000 });
+    try {
+      // Take the screenshot itself.
+      await page.screenshot({ path: screenshotPath, timeout: 1000 });
+    }
+    catch (e) {
+      console.error("Could not create screenshot");
+    }
   }
 });
 
