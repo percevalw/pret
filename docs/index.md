@@ -10,7 +10,7 @@ pip install pret pret-joy  --user
 
 ## Features
 
-- **Python, only Python**: pret is written in Python: you can write your both your UI and server actions Python. No need to learn a new language, or to use a transpiler.
+- **Python, only Python**: pret is written in Python: you can write your both your UI and server actions Python. No need to learn a new language.
 - **Client-side rendering**: unlike other Python UI frameworks, pret runs primarily in the browser. This enables a fast response time to user actions (like hover events), and a better user experience under degraded network conditions.
 - **Built on React**: pret uses React as a rendering engine, and benefits from its ecosystem.
 - **Reactive**: unlike other solutions like ipywidgets, pret is reactive. Only the parts of the UI that need to be updated are re-rendered.
