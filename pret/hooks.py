@@ -6,19 +6,18 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
-    Union,
-    overload,
 )
 
 from typing_extensions import Protocol
 
 from pret.marshal import js, marshal_as
-from pret.state import (
-    DictPretProxy,
-    ListPretProxy,
-    TrackedDictPretProxy,
-    TrackedListPretProxy,
-)
+
+# from pret.state import (
+#     DictPretProxy,
+#     ListPretProxy,
+#     TrackedDictPretProxy,
+#     TrackedListPretProxy,
+# )
 
 StateValueType = TypeVar("StateValueType")
 
@@ -226,16 +225,16 @@ def use_body_style(styles):
     use_effect(apply_styles, [styles])
 
 
-@overload
-def use_tracked(
-    proxy_object: "Union[DictPretProxy, TrackedDictPretProxy]",
-) -> "TrackedDictPretProxy": ...
-
-
-@overload
-def use_tracked(
-    proxy_object: "Union[ListPretProxy, TrackedListPretProxy]",
-) -> "TrackedListPretProxy": ...
+# @overload
+# def use_tracked(
+#     proxy_object: "Union[DictPretProxy, TrackedDictPretProxy]",
+# ) -> "TrackedDictPretProxy": ...
+#
+#
+# @overload
+# def use_tracked(
+#     proxy_object: "Union[ListPretProxy, TrackedListPretProxy]",
+# ) -> "TrackedListPretProxy": ...
 
 
 @marshal_as(js="return window.valtio.useSnapshot")

@@ -37,7 +37,8 @@
     "regenerator-runtime": "^0.13.11",
     "style-loader": "^3.3.2",
     "use-sync-external-store": "^1.2.0",
-    "valtio": "^2.1.5"
+    "valtio": "^2.1.5",
+    "valtio-yjs": "^0.6.0"
   },
   "devDependencies": {
     "@jupyterlab/builder": "^3.6.3",

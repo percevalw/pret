@@ -16,6 +16,7 @@ dependencies = [
     "typer",
     "pygetsource",
     "cbor2",
+    "pret-pycrdt>=0.12.20-post2",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -112,7 +113,7 @@ editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 [tool.hatch.build]
 artifacts = [
     "pret",
-    "vendor/transcrypt/transcrypt/modules"
+    "vendor/transcrypt/transcrypt/modules",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -32,13 +32,28 @@ state = proxy(
             {"text": "My first todo", "done": True},
             {"text": "My second todo", "done": False},
         ],
+        "letters": ["a", "b"],
     }
 )
 
 subscribe(state, callback=lambda ops: print(ops))
 state["todos"][1]["done"] = True
-# prints: [['__setitem__', ['todos', 1, 'done'], True]]
+# Out: [('set', ['todos', 1, 'done'], True, False)]
+
+del state["todos"][1]["done"]
+# Out: [('delete', ['todos', 1, 'done'], None, True)]
+
+state["todos"][1]["cool"] = True
+# Out: [('set', ['todos', 1, 'cool'], True, None)]
+
+state["letters"].append("c")
+# Out: [('set', ['letters', 2], 'c', None)]
+
+state["letters"][1] = "z"  # (1)!
+# Out: [('set', ['letters', 1], 'z', None)]
 ```
+
+1. In Python, we cannot access the replaced value (None below). However, it is accessible in transpiled Python code (ie when the method is called from a @component function)
 
 !!! warning "Supported types"
 
