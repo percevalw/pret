@@ -35,10 +35,10 @@ def server_only(
 
 @marshal_as(
     js="""
-       return function is_awaitable(value) {
-           return true;
-       }
-       """,
+return function is_awaitable(value) {
+   return true;
+}
+""",
     globals={},
 )
 def is_awaitable(value):
@@ -148,17 +148,25 @@ class Manager:
 
     def handle_message(self, method, data):
         if method == "call":
-            return self.handle_call(**data)
+            return self.handle_call(data)
         elif method == "state_change":
-            return self.handle_state_change(**data)
+            return self.handle_state_change(data)
         elif method == "call_success":
-            return self.handle_call_success(**data)
+            return self.handle_call_success(data)
         elif method == "call_failure":
-            return self.handle_call_failure(**data)
+            return self.handle_call_failure(data)
+        elif method == "state_sync_request":
+            return self.handle_state_sync_request(data.get("sync_id"))
         else:
             raise Exception(f"Unknown method: {method}")
 
-    async def handle_call(self, function_id, args, kwargs, callback_id):
+    async def handle_call(self, data):
+        function_id, args, kwargs, callback_id = (
+            data["function_id"],
+            data["args"],
+            data["kwargs"],
+            data["callback_id"],
+        )
         try:
             fn = self.functions[function_id]
             # check coroutine or sync function
@@ -174,13 +182,15 @@ class Manager:
                 },
             )
 
-    def handle_call_success(self, callback_id, value):
+    def handle_call_success(self, data):
+        callback_id, value = data["callback_id"], data["value"]
         future = self.call_futures.pop(callback_id, None)
         if future is None:
             return
         future.set_result(value)
 
-    def handle_call_failure(self, callback_id, message):
+    def handle_call_failure(self, data):
+        callback_id, message = data["callback_id"], data["message"]
         future = self.call_futures.pop(callback_id, None)
         if future is None:
             return
@@ -228,6 +238,22 @@ class Manager:
         return identifier
 
 
+class JupyterClientManager(Manager):
+    def __init__(self):
+        super().__init__()
+        self.env_handler = None
+
+    def register_environment_handler(self, handler):
+        self.env_handler = handler
+        self.send_message("state_sync_request", {})
+
+    def send_message(self, method, data):
+        if self.env_handler is None:
+            raise Exception("No environment handler set")
+        self.env_handler.sendMessage(method, data)
+
+
+@marshal_as(JupyterClientManager)
 class JupyterServerManager(Manager):
     def __init__(self):
         super().__init__()
@@ -303,20 +329,6 @@ class JupyterServerManager(Manager):
             result = self._await_and_send_message(result)
             if is_awaitable(result):
                 start_async_task(result)
-
-
-class JupyterClientManager(Manager):
-    def __init__(self):
-        super().__init__()
-        self.env_handler = None
-
-    def register_environment_handler(self, handler):
-        self.env_handler = handler
-
-    def send_message(self, method, data):
-        if self.env_handler is None:
-            raise Exception("No environment handler set")
-        self.env_handler.sendMessage(method, data)
 
 
 class StandaloneClientManager(Manager):
