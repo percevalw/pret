@@ -58,7 +58,6 @@ export default class PretJupyterHandler {
             this._readyResolve = resolve;
             this._readyReject = reject;
         });
-        this._readyResolve();
 
         // https://github.com/jupyter-widgets/ipywidgets/commit/5b922f23e54f3906ed9578747474176396203238
         context?.sessionContext.kernelChanged.connect((
@@ -103,22 +102,6 @@ export default class PretJupyterHandler {
     };
 
     /**
-     * Create a comm.
-     */
-
-    createComm = async (
-        target_name: string,
-    ): Promise<IComm> => {
-        let kernel = this.context?.sessionContext.session?.kernel;
-        if (!kernel) {
-            throw new Error('No current kernel');
-        }
-        let comm = kernel.createComm(target_name);
-        comm.open();
-        return comm;
-    }
-
-    /**
      * Get the currently-registered comms.
      */
     getCommInfo = async (): Promise<any> => {
@@ -150,7 +133,16 @@ export default class PretJupyterHandler {
         const relevantCommIds = Object.keys(allCommIds).filter(key => allCommIds[key]['target_name'] === this.commTargetName);
         console.info("Jupyter annotator comm ids", relevantCommIds, "(there should be at most one)");
         if (relevantCommIds.length === 0) {
-            const comm = await this.createComm(this.commTargetName);
+            const comm = this.context?.sessionContext.session?.kernel.createComm(this.commTargetName);
+            comm.open()
+            this.handleCommOpen(comm);
+        }
+        else if (relevantCommIds.length >= 1) {
+            if (relevantCommIds.length > 1) {
+                console.warn("Multiple comms found for target name", this.commTargetName, "using the first one");
+            }
+            const comm = this.context?.sessionContext.session?.kernel.createComm(this.commTargetName, relevantCommIds[0]);
+            // comm.open()
             this.handleCommOpen(comm);
         }
     };
