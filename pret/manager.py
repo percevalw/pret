@@ -3,6 +3,7 @@ This module provides client and server managers for handling remote calls,
 state synchronization, and communication between the frontend and backend.
 """
 
+import base64
 import hashlib
 import inspect
 import time
@@ -14,7 +15,6 @@ from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 from typing_extensions import ParamSpec, TypeVar
 
 from pret.marshal import marshal_as
-from pret.state import patch, subscribe
 
 CallableParams = ParamSpec("ServerCallableParams")
 CallableReturn = TypeVar("CallableReturn")
@@ -137,9 +137,7 @@ class Manager:
         # the content of the value tuples
         self.functions = WeakValueDictionary()
         self.states: "WeakValueDictionary[str, Any]" = WeakValueDictionary()
-        self.states_unsubscribe: "WeakKeyDictionary[Any, Callable]" = (
-            WeakKeyDictionary()
-        )
+        self.states_subscriptions: "WeakKeyDictionary[Any, Any]" = WeakKeyDictionary()
         self.call_futures = {}
         self.disabled_state_sync = set()
 
@@ -196,6 +194,11 @@ class Manager:
             return
         future.set_exception(Exception(message))
 
+    def handle_state_sync_request(self, sync_id=None):
+        for sid, state in self.states.items():
+            if sync_id is None or sid == sync_id:
+                self.send_state_change(state.get_update(), sync_id=sid)
+
     def send_call(self, function_id, *args, **kwargs):
         callback_id = str(time.time())
         message_future = self.send_message(
@@ -216,26 +219,54 @@ class Manager:
     def register_call_future(self, callback_id, future):
         self.call_futures[callback_id] = future
 
-    def register_state(self, sync_id, state, unsubscribe):
-        self.states[sync_id] = state
-        self.states_unsubscribe[state] = unsubscribe
+    def register_state(self, sync_id, doc: Any):
+        self.states[sync_id] = doc
+        self.states_subscriptions[doc] = doc.on_update(
+            lambda update: self.send_state_change(update, sync_id=sync_id)
+        )
 
-    def handle_state_change(self, ops, sync_id):
-        state = self.states[sync_id]
-        self.states_unsubscribe[state]()
+    def handle_state_change(self, data):
+        update = b64_decode(data["update"])
+        state = self.states[data["sync_id"]]
+        state.apply_update(update)
 
-        patch(state, ops)
-
-        unsub = subscribe(state, lambda ops: self.send_state_change(ops, sync_id))
-        self.states_unsubscribe[state] = unsub
-
-    def send_state_change(self, ops, sync_id):
-        self.send_message(method="state_change", data={"ops": ops, "sync_id": sync_id})
+    def send_state_change(self, update, sync_id):
+        self.send_message(
+            method="state_change",
+            data={
+                "update": b64_encode(update),
+                "sync_id": sync_id,
+            },
+        )
 
     def register_function(self, fn) -> str:
         identifier = function_identifier(fn)
         self.functions[identifier] = fn
         return identifier
+
+
+@marshal_as(
+    js="""
+return (function b64_encode(data) {
+    return btoa(String.fromCharCode(...new Uint8Array(data)));
+});
+"""
+)
+def b64_encode(data: bytes) -> str:
+    """Encode bytes to a base64 string."""
+    return base64.b64encode(data).decode("utf-8")
+
+
+@marshal_as(
+    js="""
+return (function b64_decode(data) {
+    return Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+});
+"""
+)
+def b64_decode(data: str) -> bytes:
+    """Decode a base64 string to bytes."""
+    return base64.b64decode(data.encode("utf-8"))
 
 
 class JupyterClientManager(Manager):

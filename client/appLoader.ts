@@ -1,12 +1,31 @@
 import React from "react";
 import { addExtension, Decoder } from "./cborDecoder";
 import * as valtio from "valtio";
+import * as Y from "yjs";
+import { bind } from "valtio-yjs";
+
 import { createProxy, getUntracked, trackMemo } from "proxy-compare";
 import useSyncExternalStoreExports from "use-sync-external-store/shim";
 import * as pyRuntime from "./org.transcrypt.__runtime__";
 
 (window as any).pret_modules = (window as any).pret || {};
 (window as any).pret_modules["org.transcrypt.__runtime__"] = pyRuntime;
+
+Object.defineProperty(Y.Doc.prototype, 'on_update', {
+  value(callback: (update: Uint8Array) => void) {
+    this.on('update', callback);
+  },
+  configurable: true,
+  enumerable: false,
+});
+
+Object.defineProperty(Y.Doc.prototype, 'apply_update', {
+  value(update: Uint8Array) {
+    Y.applyUpdate(this, update);
+  },
+  configurable: true,
+  enumerable: false,
+});
 
 // Put the global variables in the window object to allow pret stub components and stub functions to access them
 (window as any).React = React;
@@ -16,6 +35,8 @@ import * as pyRuntime from "./org.transcrypt.__runtime__";
 (valtio as any).createProxy = createProxy;
 (valtio as any).getUntracked = getUntracked;
 (valtio as any).trackMemo = trackMemo;
+(valtio as any).bind = bind;
+(window as any).Y = Y;
 
 // TODO: should this be in the scope of loadApp?
 const factories = {};
