@@ -156,9 +156,21 @@ def proxy(x, *, remote_sync=None, sync_id=None):
 
 @marshal_as(
     js="""
+var proxyStateMap = valtio.unstable_getInternalStates().proxyStateMap;
 return ((obj) => {
-    window.valtio.trackMemo(obj);
-    return window.valtio.getUntracked(obj) || window.valtio.snapshot(obj);
+    if (proxyStateMap.has(obj)) {
+        // if proxy, return snapshot
+        return valtio.snapshot(obj);
+    }
+    // Otherwise, we assume it maybe a tracked proxy
+    var untracked = valtio.getUntracked(obj);
+    if (untracked !== null) {
+        // mark it as used
+        window.valtio.trackMemo(obj);
+        return untracked;
+    }
+    // Otherwise, we assume it is a plain object
+    return obj;
 })
 """
 )
