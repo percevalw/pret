@@ -160,6 +160,9 @@ pret/js-extension
 pret/js-base
 client/**/*.js
 client/**/*.js.map
+!client/cborDecoder.js
+!client/org.transcrypt.__runtime__.js
+!webpack/
 
 # JS globals
 client/globals.ts
