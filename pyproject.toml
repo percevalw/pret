@@ -100,7 +100,7 @@ path = "pret/__init__.py"
 requires = ["hatchling", "jupyterlab<4.0.0", "pip<=24.0"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.hooks.jupyter-builder]
+[tool.hatch.build.targets.wheel.hooks.jupyter-builder]
 dependencies = ["hatch-jupyter-builder"]
 build-function = "hatch_jupyter_builder.npm_builder"
 install-pre-commit-hook = true
@@ -110,7 +110,6 @@ editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
 
 [tool.hatch.build]
 artifacts = [
-    "pret",
     "vendor/transcrypt/transcrypt/modules",
 ]
 
@@ -118,6 +117,10 @@ artifacts = [
 packages = [
     "pret",
     "vendor/transcrypt/transcrypt",
+]
+artifacts = [
+    "pret",
+    "vendor/transcrypt/transcrypt/modules",
 ]
 
 [tool.hatch.build.targets.wheel.shared-data]

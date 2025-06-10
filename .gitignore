@@ -164,9 +164,6 @@ client/**/*.js.map
 !client/org.transcrypt.__runtime__.js
 !webpack/
 
-# JS globals
-client/globals.ts
-
 .vscode
 
 # Pycharm
