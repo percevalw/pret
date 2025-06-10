@@ -10,6 +10,7 @@ from typing import Callable, TypeVar
 
 from pret.manager import get_manager
 from pret.marshal import get_shared_marshaler, marshal_as
+from pret.state import snapshot
 
 T = TypeVar("T")
 
@@ -22,16 +23,16 @@ return function py_to_react() {
     var children;
     var props;
 	if (
-            arguments.length > 0
-            && arguments[arguments.length - 1]
-            && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
+        arguments.length > 0
+        && arguments[arguments.length - 1]
+        && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
     ) {
         children = Array.prototype.slice.call(arguments, 0, -1);
         props = arguments[arguments.length - 1];
         delete props.__kwargtrans__;
         var props = Object.fromEntries(Object.entries(props).map(([k, v]) => [
             props_mapping[k] || k,
-            v
+            snapshot(v)
         ]));
     } else {
         children = Array.from(arguments);
@@ -47,6 +48,7 @@ return function py_to_react() {
             globals={
                 "name": name,
                 "props_mapping": props_mapping,
+                "snapshot": snapshot,
             },
         )
         def py_to_react(*children, **props): ...
