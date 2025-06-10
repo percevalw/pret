@@ -62,6 +62,7 @@ dev = [
 ]
 docs = [
     "mkdocs-eds @ git+https://github.com/percevalw/mkdocs-eds.git@main#egg=mkdocs-eds",
+    "pret-joy",
 ]
 
 # ----- Linting & Testing -----
