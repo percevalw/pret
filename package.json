@@ -5,9 +5,9 @@
   "scripts": {
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
     "build:dev": "jlpm clean && jlpm build:standalone:dev && jlpm build:jupyter:dev",
-    "build:standalone": "webpack --config webpack/webpack.config.js",
+    "build:standalone": "webpack --config webpack/webpack.config.js --mode development",
     "build:standalone:dev": "webpack --config webpack/webpack.config.js --mode development",
-    "build:jupyter": "jupyter labextension build",
+    "build:jupyter": "jupyter labextension build --development True .",
     "build:jupyter:dev": "jupyter labextension build --development True .",
     "clean": "rm -rf pret/js-extension pret/js-base"
   },
