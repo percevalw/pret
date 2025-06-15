@@ -2,7 +2,7 @@ import React from "react";
 import { addExtension, Decoder } from "./cborDecoder";
 import * as valtio from "valtio";
 import * as Y from "yjs";
-import { bind } from "valtio-yjs";
+import { bind } from "./vendor/valtio-yjs";
 
 import { createProxy, getUntracked, trackMemo } from "proxy-compare";
 import useSyncExternalStoreExports from "use-sync-external-store/shim";
@@ -11,15 +11,15 @@ import * as pyRuntime from "./org.transcrypt.__runtime__";
 (window as any).pret_modules = (window as any).pret || {};
 (window as any).pret_modules["org.transcrypt.__runtime__"] = pyRuntime;
 
-Object.defineProperty(Y.Doc.prototype, 'on_update', {
+Object.defineProperty(Y.Doc.prototype, "on_update", {
   value(callback: (update: Uint8Array) => void) {
-    this.on('update', callback);
+    this.on("update", callback);
   },
   configurable: true,
   enumerable: false,
 });
 
-Object.defineProperty(Y.Doc.prototype, 'apply_update', {
+Object.defineProperty(Y.Doc.prototype, "apply_update", {
   value(update: Uint8Array) {
     Y.applyUpdate(this, update);
   },
@@ -109,7 +109,11 @@ export function makeLoadApp() {
 
   return function loadApp(serialized, marshalerId, chunkIdx) {
     if (!cache.has(marshalerId)) {
-      let cached = [new Decoder({ useRecords: false, shareReferenceMap: true } as any), new Map(), 0];
+      let cached = [
+        new Decoder({ useRecords: false, shareReferenceMap: true } as any),
+        new Map(),
+        0,
+      ];
       cache.set(marshalerId, cached);
     }
     let [decoder, chunkStore, lastOffset] = cache.get(marshalerId);
