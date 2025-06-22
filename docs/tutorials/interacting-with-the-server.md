@@ -91,7 +91,7 @@ Since this app is hosted on GitHub Pages, there is no server-side environment to
 
 In the last [Sharing state]("./sharing-state.md") tutorial, we saw how to create a shared state between components with `state = proxy(...)`. This shared state is stored in the browser's memory, and is not accessible from the server. This means that once you have executed your app, the `state` variable in your notebook will not be updated when the state in the browser is updated.
 
-Pret offers a simple way to synchronize the state between the client and the server, by using the `remote_sync` option in the `proxy` function. This option will keep both server and client states in sync whenever one of them is updated.
+Pret offers a simple way to synchronize the state between the client and the server, by using the `sync` option in the `proxy` function. This option will keep both server and client states in sync whenever one of them is updated. Under the hood, the state is stored as a CRDT (Conflict-free Replicated Data Type), and only the changes are sent to the other side.
 
 ```python { .render-with-pret }
 from pret.ui.joy import Button
@@ -100,7 +100,7 @@ from pret.hooks import use_tracked
 
 state = proxy({
     "count": 0,
-}, remote_sync=True)
+}, sync=True)
 
 
 @component
@@ -125,3 +125,13 @@ print(state["count"])
 # Change the count from the notebook
 state["count"] = 42
 ```
+
+## Persisting the state to the file system
+
+Passing a file path to the `sync` option makes the state persistent across server restarts and enables collaboration even when several kernels run in different processes. Every update is appended to the file as a binary Yjs delta. Each server watches the file for changes so that edits made by another process are picked up and broadcasted to its connected clients.
+
+```python
+state = proxy({"count": 0}, sync="./shared_state.bin")
+```
+
+If another instance of your application uses the same file path, all changes will be merged and synchronized between all clients and servers.

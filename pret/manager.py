@@ -3,12 +3,13 @@ This module provides client and server managers for handling remote calls,
 state synchronization, and communication between the frontend and backend.
 """
 
+import asyncio
 import base64
 import hashlib
 import inspect
-import time
+import uuid
 from asyncio import Future
-from json import dumps
+from json import dumps, loads
 from typing import Any, Awaitable, Callable, Union
 from weakref import WeakKeyDictionary, WeakValueDictionary, ref
 
@@ -22,7 +23,7 @@ CallableReturn = TypeVar("CallableReturn")
 
 def make_remote_callable(function_id):
     async def remote_call(*args, **kwargs):
-        return await get_manager().send_call(function_id, *args, **kwargs)
+        return await get_manager().send_call(function_id, args, kwargs)
 
     return remote_call
 
@@ -56,7 +57,6 @@ return function start_async_task(task) {
 )
 def start_async_task(task):
     """Start an async task and return it."""
-    import asyncio
 
     asyncio.create_task(task)
 
@@ -69,7 +69,7 @@ return (resource, options) => {
 """,
     globals={},
 )
-def fetch(resource, options): ...
+async def fetch(resource, options): ...
 
 
 @marshal_as(
@@ -128,6 +128,15 @@ class weakmethod:
         return self.cls_method(instance, *args, **kwargs)
 
 
+@marshal_as(
+    js="""
+return () => crypto.randomUUID();
+"""
+)
+def make_uuid():
+    return uuid.uuid4().hex
+
+
 class Manager:
     manager = None
 
@@ -140,25 +149,27 @@ class Manager:
         self.states_subscriptions: "WeakKeyDictionary[Any, Any]" = WeakKeyDictionary()
         self.call_futures = {}
         self.disabled_state_sync = set()
+        self.uid = make_uuid()
+        self._current_origin = self.uid
 
     def send_message(self, method, data):
         raise NotImplementedError()
 
     def handle_message(self, method, data):
         if method == "call":
-            return self.handle_call(data)
+            return self.handle_call_msg(data)
         elif method == "state_change":
-            return self.handle_state_change(data)
+            return self.handle_state_change_msg(data)
         elif method == "call_success":
-            return self.handle_call_success(data)
+            return self.handle_call_success_msg(data)
         elif method == "call_failure":
-            return self.handle_call_failure(data)
+            return self.handle_call_failure_msg(data)
         elif method == "state_sync_request":
-            return self.handle_state_sync_request(data.get("sync_id"))
+            return self.handle_state_sync_request_msg(data.get("sync_id"))
         else:
             raise Exception(f"Unknown method: {method}")
 
-    async def handle_call(self, data):
+    async def handle_call_msg(self, data):
         function_id, args, kwargs, callback_id = (
             data["function_id"],
             data["args"],
@@ -180,27 +191,27 @@ class Manager:
                 },
             )
 
-    def handle_call_success(self, data):
+    def handle_call_success_msg(self, data):
         callback_id, value = data["callback_id"], data["value"]
         future = self.call_futures.pop(callback_id, None)
         if future is None:
             return
         future.set_result(value)
 
-    def handle_call_failure(self, data):
+    def handle_call_failure_msg(self, data):
         callback_id, message = data["callback_id"], data["message"]
         future = self.call_futures.pop(callback_id, None)
         if future is None:
             return
         future.set_exception(Exception(message))
 
-    def handle_state_sync_request(self, sync_id=None):
+    def handle_state_sync_request_msg(self, sync_id=None):
         for sid, state in self.states.items():
             if sync_id is None or sid == sync_id:
-                self.send_state_change(state.get_update(), sync_id=sid)
+                self.send_state_change(state.get_update(), sid)
 
-    def send_call(self, function_id, *args, **kwargs):
-        callback_id = str(time.time())
+    def send_call(self, function_id, args, kwargs):
+        callback_id = make_uuid()
         message_future = self.send_message(
             "call",
             {
@@ -225,17 +236,22 @@ class Manager:
             lambda update: self.send_state_change(update, sync_id=sync_id)
         )
 
-    def handle_state_change(self, data):
+    def handle_state_change_msg(self, data):
+        if data["origin"] == self.uid:
+            return
         update = b64_decode(data["update"])
         state = self.states[data["sync_id"]]
+        self._current_origin = data["origin"]
         state.apply_update(update)
+        self._current_origin = self.uid
 
     def send_state_change(self, update, sync_id):
         self.send_message(
-            method="state_change",
-            data={
+            "state_change",
+            {
                 "update": b64_encode(update),
                 "sync_id": sync_id,
+                "origin": self._current_origin,
             },
         )
 
@@ -362,9 +378,34 @@ class JupyterServerManager(Manager):
                 start_async_task(result)
 
 
+@marshal_as(
+    js="""
+return function make_websocket(resource) {
+    return new WebSocket(resource);
+}
+""",
+    globals={},
+)
+def make_websocket(protocol: str = "ws") -> Any:
+    raise NotImplementedError("This function is not meant to be called from Python. ")
+
+
 class StandaloneClientManager(Manager):
     def __init__(self):
         super().__init__()
+        self.websocket = make_websocket("/ws")
+
+        def on_message(event):
+            """Handle incoming messages from the WebSocket."""
+            data = event.data
+            data = loads(data)
+            self.handle_message(data["method"], data["data"])
+
+        # add a listener with cb to self.handle_message
+        self.websocket.addEventListener("message", on_message)
+        self.websocket.addEventListener(
+            "open", lambda: self.send_message("state_sync_request", {})
+        )
 
     async def send_message(self, method, data):
         response = await fetch(
@@ -387,7 +428,6 @@ class StandaloneServerManager(Manager):
     def __init__(self):
         super().__init__()
         self.connections = {}
-        # marshal_as(self, StandaloneClientManager())
 
     def __reduce__(self):
         return get_manager, ()
@@ -400,13 +440,13 @@ class StandaloneServerManager(Manager):
         return queue
 
     def unregister_connection(self, connection_id):
-        self.connections.pop(connection_id)
+        self.connections.pop(connection_id, None)
 
     def send_message(self, method, data, connection_ids=None):
         if connection_ids is None:
             connection_ids = self.connections.keys()
         for connection_id in connection_ids:
-            self.connections[connection_id].put_nowait((method, data))
+            self.connections[connection_id].put_nowait({"method": method, "data": data})
 
     async def handle_websocket_msg(self, data, connection_id):
         result = self.handle_message(data["method"], data["data"])

@@ -1,3 +1,5 @@
+import os
+
 from pret import component, proxy, use_state, use_tracked
 from pret.ui.react import div, input, label, p
 
@@ -6,7 +8,7 @@ state = proxy(
         "faire à manger": True,
         "faire la vaisselle": False,
     },
-    sync=True,
+    sync=os.environ["SYNC_FILE"],
 )
 
 
