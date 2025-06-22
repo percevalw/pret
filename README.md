@@ -18,7 +18,7 @@ pip install pret pret-joy  --user
 - **Client-side rendering**: unlike other Python UI frameworks, pret runs primarily in the browser. This enables a fast response time to user actions (like hover events), and a better user experience under degraded network conditions.
 - **Built on React**: pret uses React as a rendering engine, and benefits from its ecosystem.
 - **Reactive**: unlike other solutions like ipywidgets, pret is reactive. Only the parts of the UI that need to be updated are re-rendered.
-- **State management**: in addition to React's local state management (i.e. `use_state`), pret provides a global and modular state management solution that is synchronized both between components, and between the client and the server.
+- **State management**: in addition to React's local state management (i.e. `use_state`), pret provides a global and modular state management solution that is synchronized between components, between the browser and the server, and can even be persisted to a file for collaborative editing.
 - **Modular**: pret is designed to be modular. You can easily create your own components, and reuse them in other pret-based projects.
 - **Integrated with Jupyter**: pret components can be used in Jupyter notebooks, as well as in standalone web applications.
 - **Remote execution**: pret can call and use the result of Python functions on the server from the browser
@@ -43,7 +43,7 @@ state = proxy(
         "faire à manger": True,
         "faire la vaisselle": False,
     },
-    remote_sync=True,
+    sync=True,
 )
 
 

@@ -1,3 +1,7 @@
+# Unreleased
+
+- Add file system persistence for proxy states, using concatenations of yjs/pycrdt update binaries. Using file watchers, this also enables collaboration between multiple users using different servers/kernels.
+
 # v0.2.0 (2025-06-10)
 
 - **Major change**: I dropped pyodide and replaced it with Python → JavaScript transpilation (using Transcrypt) on the server. This comes with a few caveats such as the lack of support for some Python constructs and modules (to be documented), but brings a lot of benefits:

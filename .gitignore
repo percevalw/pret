@@ -178,3 +178,6 @@ yarn.lock
 yarn-error.log
 
 .venv
+
+# Data files
+*.bin

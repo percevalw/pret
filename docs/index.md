@@ -39,7 +39,7 @@ state = proxy(
         "faire à manger": True,
         "faire la vaisselle": False,
     },
-    remote_sync=True,
+    sync=True,
 )
 
 

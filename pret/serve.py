@@ -32,8 +32,8 @@ def make_app(assets: Dict[str, Union[str, Path]]) -> Quart:
         send_queue = manager.register_connection(websocket_id)
 
         async def _send():
-            async for message in send_queue:
-                await websocket.send(message)
+            while True:
+                await websocket.send_json(await send_queue.get())
 
         task = None
         try:
