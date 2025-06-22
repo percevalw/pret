@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import fnmatch
 import hashlib
@@ -350,5 +351,5 @@ def run(
     ) as (assets, entries, bundle_filename):
         app = make_app(assets)
         if serve:
-            app.run(debug=dev, port=port)
+            app.run(debug=dev, port=port, loop=asyncio.get_event_loop())
         return app

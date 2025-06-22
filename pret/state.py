@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import os
+import threading
 import uuid
+import weakref
+from pathlib import Path
 from typing import Any, List
 
 from pycrdt import ArrayEvent, MapEvent, TextEvent
@@ -11,6 +16,7 @@ from pycrdt._map import Map
 from pycrdt._pycrdt import Array as _Array
 from pycrdt._pycrdt import Doc as _Doc
 from pycrdt._pycrdt import Map as _Map
+from watchfiles import awatch
 
 from pret.manager import get_manager
 from pret.marshal import marshal_as
@@ -84,6 +90,24 @@ class AutoDoc(Doc):
         """Register a callback to be called on document updates."""
         return self.observe(lambda event: fn(event.update))
 
+    def to_py(self) -> dict[str, Any]:
+        """Convert the document to a Python dictionary."""
+
+        def rec(value: Any) -> Any:
+            if isinstance(value, (list, AutoArray)):
+                return [(rec(v) if isinstance(v, BaseType) else v) for v in value]
+            elif isinstance(value, (dict, AutoMap)):
+                return {
+                    k: (rec(v) if isinstance(v, BaseType) else v)
+                    for k, v in value.items()
+                }
+            elif isinstance(value, BaseDoc):
+                return value.to_py()
+            else:
+                return value
+
+        return {k: rec(v) for k, v in self._roots.items()}
+
 
 base_types[_Array] = AutoArray  # type: ignore[assignment]
 base_types[_Map] = AutoMap  # type: ignore[assignment]
@@ -140,10 +164,95 @@ return (function rebuild_doc(update, roots, sync_id) {
     return _rebuild_doc
 
 
-def proxy(x, *, remote_sync=None, sync_id=None):
-    if remote_sync is True and sync_id is None:
+def proxy(x, *, sync=None, sync_id=None):
+    if sync and sync_id is None:
         sync_id = str(uuid.uuid4())
-    doc = AutoDoc({"_": {"_": x}}, sync_id=sync_id)
+    doc = AutoDoc({"_": {}}, sync_id=sync_id)
+
+    if not isinstance(sync, (str, os.PathLike)):
+        doc["_"]["_"] = x
+    else:
+        offset = 36  # uuid prefix length
+        path = Path(sync).expanduser()
+
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            doc["_"]["_"] = x
+            sync_bytes = doc.sync_id.encode()
+            size_bytes = len(doc.get_update()).to_bytes(4, "little")
+            with path.open("wb") as f:
+                f.write(sync_bytes)
+                f.write(size_bytes)
+                f.write(doc.get_update())
+                offset = f.tell()
+        else:
+            with path.open("rb") as f:
+                existing_id = f.read(36).decode()
+                sync_id = existing_id
+                doc.sync_id = existing_id
+                offset = f.tell()
+
+        lock = threading.Lock()
+        applying = False
+
+        def read_updates():
+            nonlocal offset, applying
+            if not path.exists():
+                return
+            with lock, path.open("rb") as f:
+                f.seek(offset)
+                while True:
+                    start = f.tell()
+                    header = f.read(4)
+                    if len(header) < 4:
+                        f.seek(start)
+                        break
+                    size = int.from_bytes(header, "little")
+                    data = f.read(size)
+                    if len(data) < size:
+                        f.seek(start)
+                        break
+                    offset = f.tell()
+                    applying = True
+                    doc.apply_update(data)
+                    applying = False
+
+        read_updates()
+
+        def on_doc_update(update):
+            nonlocal offset
+            if applying:
+                return
+            size_bytes = len(update).to_bytes(4, "little")
+            with lock, path.open("ab") as f:
+                f.write(size_bytes)
+                f.write(update)
+            offset += len(size_bytes) + len(update)
+
+        doc.on_update(on_doc_update)
+
+        # Start an asyncio task that watches the directory for changes
+        async def _watcher():
+            async for changes in awatch(path):
+                for change, change_path in changes:
+                    if change.name != "deleted":
+                        read_updates()
+
+        loop = asyncio.get_event_loop()
+
+        def _start_watcher() -> None:
+            watcher_task = asyncio.create_task(_watcher())
+            doc._persistence_watcher = watcher_task
+
+            def _end_watcher():
+                watcher_task.cancel()
+
+            doc._persistence_finalizer = weakref.finalize(doc, _end_watcher)
+
+        if loop.is_running():
+            _start_watcher()
+        else:
+            loop.call_soon(_start_watcher)
 
     if sync_id is not None:
         from pret.manager import get_manager
@@ -233,7 +342,6 @@ def subscribe(proxy_object, callback=None, notify_in_sync=False):
 
             if isinstance(ev, MapEvent):
                 for key, delta in ev.keys.items():
-                    print("Processing key:", key, "Change:", delta)
                     path = base + [key]
                     action = delta["action"]
 

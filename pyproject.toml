@@ -17,6 +17,7 @@ dependencies = [
     "pygetsource",
     "cbor2",
     "pret-pycrdt>=0.12.20-post2",
+    "watchfiles",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -58,6 +59,7 @@ dev = [
     "hatchling",
     "hatch-jupyter-builder",
     "pret-joy",
+    "pytest-asyncio",
     "transcrypt",
 ]
 docs = [
