@@ -35,10 +35,10 @@ Let's write a simple todo app that should:
 Copy and paste the following code in a notebook:
 
 ```python { .render-with-pret }
-from pret import component, proxy, run, use_state, use_tracked
+from pret import component, create_store, run, use_state, use_store_snapshot
 from pret.ui.joy import Checkbox, Input, Stack, Typography
 
-state = proxy(
+store = create_store(
     {
         "faire à manger": True,
         "faire la vaisselle": False,
@@ -49,7 +49,7 @@ state = proxy(
 
 @component
 def TodoApp():
-    todos = use_tracked(state)
+    todos = use_store_snapshot(store)
     typed, set_typed = use_state("")
     num_remaining = sum(not ok for ok in todos.values())
     plural = "s" if num_remaining > 1 else ""
@@ -64,7 +64,7 @@ def TodoApp():
             Checkbox(
                 label=todo,
                 checked=ok,
-                on_change=lambda e, t=todo: state.update({t: e.target.checked}),
+                on_change=lambda e, t=todo: store.update({t: e.target.checked}),
             )
             for todo, ok in todos.items()
         ),

@@ -13,7 +13,7 @@ For instance, let's take a look at the following component:
 ```python { .render-with-pret }
 import time
 
-from pret import component, use_effect, use_state
+from pret import component
 from pret.ui.react import br
 
 static_time = str(time.time())
@@ -87,28 +87,28 @@ ShowCurrentWorkingDirectory()
 Since this app is hosted on GitHub Pages, there is no server-side environment to access. However, you can run this code in a notebook to see the difference between the client and server working directories.
 
 
-## Synchronizing client and server-side states
+## Synchronizing client and server-side stores
 
-In the last [Sharing state]("./sharing-state.md") tutorial, we saw how to create a shared state between components with `state = proxy(...)`. This shared state is stored in the browser's memory, and is not accessible from the server. This means that once you have executed your app, the `state` variable in your notebook will not be updated when the state in the browser is updated.
+In the last [Sharing state]("./sharing-state.md") tutorial, we saw how to create a store shared between components with `store = create_store(...)`. This store lives in the browser's memory, and is not accessible from the server. This means that once you have run your app, the `store` variable in your notebook will not be updated when the state in the browser is updated.
 
-Pret offers a simple way to synchronize the state between the client and the server, by using the `sync` option in the `proxy` function. This option will keep both server and client states in sync whenever one of them is updated. Under the hood, the state is stored as a CRDT (Conflict-free Replicated Data Type), and only the changes are sent to the other side.
+Pret offers a simple way to synchronize this store object between the client and the server, by using the `sync` option in the `create_store` function. This option will keep both server and client states in sync whenever one of them is updated. Under the hood, the store is managed as a CRDT (Conflict-free Replicated Data Type), and only the changes are sent to the other side.
 
 ```python { .render-with-pret }
 from pret.ui.joy import Button
-from pret import component, proxy
-from pret.hooks import use_tracked
+from pret import component, create_store
+from pret.hooks import use_store_snapshot
 
-state = proxy({
+store = create_store({
     "count": 0,
 }, sync=True)
 
 
 @component
 def Counter():
-    tracked = use_tracked(state)
+    tracked = use_store_snapshot(store)
 
     def increment(event):
-        state["count"] += 1
+        store["count"] += 1
 
     return Button(f"Count: {tracked['count']}. Click to increment", on_click=increment)
 
@@ -116,22 +116,22 @@ def Counter():
 Counter()
 ```
 
-In your notebook, you can now change the `state["count"]` variable in another cell, and observe the change in the browser. Conversely, you can click the "Increment" button in the browser, and print the `state["count"]` variable in your notebook to see the change.
+In your notebook, you can now change the `store["count"]` variable in another cell, and observe the change in the browser. Conversely, you can click the "Increment" button in the browser, and print the `store["count"]` variable in your notebook to see the change.
 
 ```python
 # Show the current count, synchronized with the browser
-print(state["count"])
+print(store["count"])
 
 # Change the count from the notebook
-state["count"] = 42
+store["count"] = 42
 ```
 
-## Persisting the state to the file system
+## Persisting the store to the file system
 
-Passing a file path to the `sync` option makes the state persistent across server restarts and enables collaboration even when several kernels run in different processes. Every update is appended to the file as a binary Yjs delta. Each server watches the file for changes so that edits made by another process are picked up and broadcasted to its connected clients.
+Passing a file path to the `sync` option makes the store persistent across server restarts and enables collaboration even when several kernels run in different processes. Every update is appended to the file as a binary Yjs delta. Each server watches the file for changes so that edits made by another process are picked up and broadcasted to its connected clients.
 
 ```python
-state = proxy({"count": 0}, sync="./shared_state.bin")
+store = create_store({"count": 0}, sync="./shared_state.bin")
 ```
 
 If another instance of your application uses the same file path, all changes will be merged and synchronized between all clients and servers.
