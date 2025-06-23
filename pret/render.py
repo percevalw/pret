@@ -10,7 +10,7 @@ from typing import Callable, TypeVar
 
 from pret.manager import get_manager
 from pret.marshal import get_shared_marshaler, marshal_as
-from pret.state import snapshot
+from pret.store import snapshot
 
 T = TypeVar("T")
 

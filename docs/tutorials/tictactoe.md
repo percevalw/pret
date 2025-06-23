@@ -3,11 +3,11 @@
 Let's build a simple TicTacToe game using Pret. We will build a simple game where two players can play against each other.
 
 ```{ .python .render-with-pret }
-from pret import proxy, component
+from pret import create_store, component
 from pret.ui.react import button, div
-from pret.hooks import use_tracked
+from pret.hooks import use_store_snapshot
 
-state = proxy({
+state = create_store({
     "board": [0] * 9,
     "turn": 1,
     "winning_pattern": [],
@@ -51,7 +51,7 @@ GRID_STYLE = {
 
 @component
 def TicTacToe():
-    tracked = use_tracked(state)
+    tracked = use_store_snapshot(state)
     winning_pattern = tracked["winning_pattern"]
 
     def on_click_square(idx):

@@ -12,7 +12,7 @@ from typing_extensions import Protocol
 
 from pret.marshal import js, marshal_as
 
-# from pret.state import (
+# from pret.store import (
 #     DictPretProxy,
 #     ListPretProxy,
 #     TrackedDictPretProxy,
@@ -226,33 +226,33 @@ def use_body_style(styles):
 
 
 # @overload
-# def use_tracked(
+# def use_store_snapshot(
 #     proxy_object: "Union[DictPretProxy, TrackedDictPretProxy]",
 # ) -> "TrackedDictPretProxy": ...
 #
 #
 # @overload
-# def use_tracked(
+# def use_store_snapshot(
 #     proxy_object: "Union[ListPretProxy, TrackedListPretProxy]",
 # ) -> "TrackedListPretProxy": ...
 
 
 @marshal_as(js="return window.valtio.useSnapshot")
-def use_tracked(proxy_object):
+def use_store_snapshot(proxy_object):
     """
-    This hook is used to track the access made on a proxy object.
-    You cannot use the returned object to change the proxy object, you
-    must mutate the original proxy(...) object directly.
+    This hook is used to track the access made on a store.
+    You cannot use the returned object to change the store, you
+    must mutate the original create_store(...) object directly.
 
     Parameters
     ----------
     proxy_object: ProxyType
-        A proxy object, like the one returned by `proxy({...})`
+        A store object, like the one returned by `create_store({...})`
 
     Returns
     -------
     TrackedProxyType
-        A tracked proxy object
+        A tracked store object
     """
 
 

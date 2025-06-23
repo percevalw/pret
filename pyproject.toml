@@ -133,3 +133,6 @@ allow-direct-references = true
 
 [tool.uv.sources]
 transcrypt = { path = "./vendor/transcrypt", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests/pytest"]
