@@ -2,14 +2,14 @@ import asyncio
 
 import pytest
 
-from pret.state import proxy
+from pret.store import create_store
 
 
 @pytest.mark.asyncio
 async def test_sync_two_states_update(tmp_path):
     path = tmp_path / "state.bin"
-    state1 = proxy({"value": 0}, sync=path)
-    state2 = proxy({"value": 0}, sync=path)
+    state1 = create_store({"value": 0}, sync=path)
+    state2 = create_store({"value": 0}, sync=path)
     assert state1.doc.sync_id == state2.doc.sync_id
 
     await asyncio.sleep(0.01)
@@ -36,7 +36,7 @@ async def test_sync_two_states_update(tmp_path):
 @pytest.mark.asyncio
 async def test_hydrate_from_existing_file(tmp_path):
     path = tmp_path / "persist.bin"
-    state1 = proxy({"count": 0}, sync=path)
+    state1 = create_store({"count": 0}, sync=path)
     state1["count"] = 7
     await asyncio.sleep(0.05)
     state1.doc._persistence_watcher.cancel()
@@ -44,7 +44,7 @@ async def test_hydrate_from_existing_file(tmp_path):
     state1.doc._persistence_finalizer.detach()
     state1.doc._persistence_finalizer = None
 
-    state2 = proxy({}, sync=path)
+    state2 = create_store({}, sync=path)
     assert state2.doc.sync_id == state1.doc.sync_id
     await asyncio.sleep(0.05)
     assert state2["count"] == 7

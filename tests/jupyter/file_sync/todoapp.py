@@ -1,9 +1,9 @@
 import os
 
-from pret import component, proxy, use_state, use_tracked
+from pret import component, create_store, use_state, use_store_snapshot
 from pret.ui.react import div, input, label, p
 
-state = proxy(
+state = create_store(
     {
         "faire à manger": True,
         "faire la vaisselle": False,
@@ -14,7 +14,7 @@ state = proxy(
 
 @component
 def TodoApp():
-    todos = use_tracked(state)
+    todos = use_store_snapshot(state)
     typed, set_typed = use_state("")
     num_remaining = sum(not ok for ok in todos.values())
     plural = "s" if num_remaining > 1 else ""

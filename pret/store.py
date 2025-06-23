@@ -6,7 +6,7 @@ import threading
 import uuid
 import weakref
 from pathlib import Path
-from typing import Any, List
+from typing import Any, List, Optional, Union
 
 from pycrdt import ArrayEvent, MapEvent, TextEvent
 from pycrdt._array import Array
@@ -164,20 +164,49 @@ return (function rebuild_doc(update, roots, sync_id) {
     return _rebuild_doc
 
 
-def proxy(x, *, sync=None, sync_id=None):
+def create_store(
+    data,
+    *,
+    sync: Optional[Union[bool, str, os.PathLike]] = None,
+    sync_id=None,
+):
+    """
+    Create a new store that can be used to store and synchronize data
+    between various components of the app, between a server and its clients,
+    or between different processes (or across multiple runs of the app) using
+    a file.
+
+    Parameters
+    ----------
+    data: Any
+        Initial data to store in the document. It can be a dictionary, list, or any
+        simple value.
+    sync: Union[bool, str, os.PathLike]
+        There are three options for this parameter:
+
+        - If false, this store will not be synchronized between a server and its
+          clients. This can be useful for local-only stores, like style management.
+        - If true, the store will be synchronized between a server and its clients.
+          Any changes made to the store will be sent to the server and vice versa.
+        - If a path is provided, the store will be synchronized with the file at this
+          path. Any changes made to the store will be written to the file, and any
+          changes made to the file will be read into the store. This can be useful
+          if you want to persist the store to disk or share it between different
+          processes (think servers or kernels).
+    """
     if sync and sync_id is None:
         sync_id = str(uuid.uuid4())
     doc = AutoDoc({"_": {}}, sync_id=sync_id)
 
     if not isinstance(sync, (str, os.PathLike)):
-        doc["_"]["_"] = x
+        doc["_"]["_"] = data
     else:
         offset = 36  # uuid prefix length
         path = Path(sync).expanduser()
 
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-            doc["_"]["_"] = x
+            doc["_"]["_"] = data
             sync_bytes = doc.sync_id.encode()
             size_bytes = len(doc.get_update()).to_bytes(4, "little")
             with path.open("wb") as f:
@@ -292,14 +321,14 @@ def snapshot(value):
 
 @marshal_as(
     js="""
-return (function(proxy_object, callback, notify_in_sync) {
+return (function(store, callback, notify_in_sync) {
     if (arguments.length > 0) {
         var kwargs = arguments[arguments.length - 1]
         if (kwargs && kwargs.hasOwnProperty("__kwargtrans__")) {
             delete props.__kwargtrans__;
             for (var attr in kwargs) {
                 switch (attr) {
-                    case 'proxy_object': var proxy_object = kwargs [attr]; break;
+                    case 'store': var store = kwargs [attr]; break;
                     case 'notify_in_sync': var notify_in_sync = kwargs [attr]; break;
                 }
             }
@@ -307,21 +336,21 @@ return (function(proxy_object, callback, notify_in_sync) {
     }
     if (callback === undefined) {
         return (callback) => {
-            return window.valtio.subscribe(proxy_object, callback, notify_in_sync);
+            return window.valtio.subscribe(store, callback, notify_in_sync);
         }
     }
-    return window.valtio.subscribe(proxy_object, callback, notify_in_sync);
+    return window.valtio.subscribe(store, callback, notify_in_sync);
 })
 """
 )
-def subscribe(proxy_object, callback=None, notify_in_sync=False):
+def subscribe(store, callback=None, notify_in_sync=False):
     """
-    Subscribe to changes in a proxy object.
+    Subscribe to changes in a store.
 
     Parameters
     ----------
-    proxy_object : Any
-        The proxy object to subscribe to.
+    store : Any
+        The store to subscribe to.
     callback : callable, optional
         The function to call when the object changes.
     notify_in_sync : bool, optional
@@ -419,7 +448,7 @@ def subscribe(proxy_object, callback=None, notify_in_sync=False):
 
         callback(ops)
 
-    proxy_object.observe_deep(convert_and_callback)
+    store.observe_deep(convert_and_callback)
 
     return convert_and_callback
 

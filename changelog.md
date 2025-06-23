@@ -1,6 +1,7 @@
 # Unreleased
 
-- Add file system persistence for proxy states, using concatenations of yjs/pycrdt update binaries. Using file watchers, this also enables collaboration between multiple users using different servers/kernels.
+- Add file system persistence for stores, using concatenations of yjs/pycrdt update binaries. Using file watchers, this also enables collaboration between multiple users using different servers/kernels.
+- Renamed `proxy(..., remote_sync=...)` to `create_store(..., sync=...)` to better reflect the purpose of the function.
 
 # v0.2.0 (2025-06-10)
 
@@ -11,7 +12,7 @@
     - **Portability**: pret can now run without Internet access, as it does not require to load the Pyodide.
     - **Error handling**: errors (and any thrown object) are now bubbled outside Python and can be handled in JavaScript, which allows for better error handling, as well as throwing Promises to support React Suspense.
 
-- Pret _tracked_ proxies are now marshaled as valtio and proxies in the browser: it is no longer possible to mutate the state using the output of `use_tracked`.
+- Pret _tracked_ proxies are now marshaled as valtio and proxies in the browser: it is no longer possible to mutate the state using the output of `use_store_snapshot`.
 - Dropped old custom valtio-like python state management, and use (pret-)pycrdt instead
 - Added dependency to [pret-pycrdt](https://github.com/percevalw/pycrdt), fork of [pycrdt](https://github.com/y-crdt/pycrdt) to support identity preservation and therefore pickling, required for our marshaling mechanism
 - Improved notebook-kernel pret manager synchronization and resynchronization
