@@ -1,0 +1,41 @@
+# This tries to build packages, and tests the packages.
+# It runs on every push to branches following the pattern v*.*.*.
+# It makes sure that everything will run when the version is released.
+
+name: Test Build
+
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+    - v*.*.*
+    - build-*
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build wheels
+        # 2.4 is too low (can't build for macos, 2.16 is too high (OpenSSL issues)
+        uses: pypa/cibuildwheel@v2.16.5
+        env:
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_ENVIRONMENT: PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build sdist
+        run: pipx run build --sdist
