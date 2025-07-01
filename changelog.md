@@ -1,4 +1,4 @@
-# Unreleased
+# v0.3.0 (2025-06-10)
 
 - Add file system persistence for stores, using concatenations of yjs/pycrdt update binaries. Using file watchers, this also enables collaboration between multiple users using different servers/kernels.
 - Renamed `proxy(..., remote_sync=...)` to `create_store(..., sync=...)` to better reflect the purpose of the function.
