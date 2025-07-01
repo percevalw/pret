@@ -264,7 +264,15 @@ class Manager:
 @marshal_as(
     js="""
 return (function b64_encode(data) {
-    return btoa(String.fromCharCode(...new Uint8Array(data)));
+    var u8 = new Uint8Array(data);
+    var binary = '';
+    for (var i = 0; i < u8.length; i += 32768) {
+        binary += String.fromCharCode.apply(
+          null,
+          u8.subarray(i, i + 32768)
+        );
+    }
+    return btoa(binary);
 });
 """
 )
