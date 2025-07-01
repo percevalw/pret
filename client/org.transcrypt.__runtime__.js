@@ -125,7 +125,7 @@ export var object = {
     __name__: 'object',
     __bases__: [],
     __new__: function (args) {
-        var instance = Object.create (this, {__class__: {value: this, enumerable: true}});
+        var instance = Object.create (this, {__class__: {value: this, enumerable: false}});
         if ('__getattr__' in this || '__setattr__' in this) {
             instance = new Proxy (instance, {
                 get: function (target, name) {
