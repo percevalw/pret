@@ -237,7 +237,7 @@ def use_body_style(styles):
 # ) -> "TrackedListPretProxy": ...
 
 
-@marshal_as(js="return window.valtio.useSnapshot")
+@marshal_as(js="return window.storeLib.useSnapshot")
 def use_store_snapshot(proxy_object):
     """
     This hook is used to track the access made on a store.
