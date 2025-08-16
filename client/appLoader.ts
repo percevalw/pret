@@ -1,10 +1,7 @@
 import React from "react";
 import { addExtension, Decoder } from "./cborDecoder";
-import * as valtio from "valtio";
+import * as storeLib from "./store";
 import * as Y from "yjs";
-import { bind } from "./vendor/valtio-yjs";
-
-import { createProxy, getUntracked, trackMemo } from "proxy-compare";
 import useSyncExternalStoreExports from "use-sync-external-store/shim";
 import * as pyRuntime from "./org.transcrypt.__runtime__";
 
@@ -31,11 +28,11 @@ Object.defineProperty(Y.Doc.prototype, "apply_update", {
 (window as any).React = React;
 (React as any).useSyncExternalStore =
   useSyncExternalStoreExports.useSyncExternalStore;
-(window as any).valtio = valtio;
-(valtio as any).createProxy = createProxy;
-(valtio as any).getUntracked = getUntracked;
-(valtio as any).trackMemo = trackMemo;
-(valtio as any).bind = bind;
+(window as any).storeLib = storeLib;
+// (valtio as any).createProxy = createProxy;
+// (valtio as any).getUntracked = getUntracked;
+// (valtio as any).trackMemo = trackMemo;
+// (valtio as any).bind = bind;
 (window as any).Y = Y;
 
 // TODO: should this be in the scope of loadApp?

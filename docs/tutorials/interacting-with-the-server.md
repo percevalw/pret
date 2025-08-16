@@ -91,7 +91,7 @@ Since this app is hosted on GitHub Pages, there is no server-side environment to
 
 In the last [Sharing state]("./sharing-state.md") tutorial, we saw how to create a store shared between components with `store = create_store(...)`. This store lives in the browser's memory, and is not accessible from the server. This means that once you have run your app, the `store` variable in your notebook will not be updated when the state in the browser is updated.
 
-Pret offers a simple way to synchronize this store object between the client and the server, by using the `sync` option in the `create_store` function. This option will keep both server and client states in sync whenever one of them is updated. Under the hood, the store is managed as a CRDT (Conflict-free Replicated Data Type), and only the changes are sent to the other side.
+Pret offers a simple way to synchronize this store object between the client and the server, by using the `sync` option in the `create_store` function. This option will keep both server and client states in sync whenever one of them is updated. Under the hood, the store is managed as a CRDT (Conflict-free Replicated Data Type) with [Yjs](https://github.com/yjs/yjs) and [py-crdt](https://github.com/y-crdt/pycrdt), and only the changes are sent to the other side.
 
 ```python { .render-with-pret }
 from pret.ui.joy import Button
@@ -128,7 +128,7 @@ store["count"] = 42
 
 ## Persisting the store to the file system
 
-Passing a file path to the `sync` option makes the store persistent across server restarts and enables collaboration even when several kernels run in different processes. Every update is appended to the file as a binary Yjs delta. Each server watches the file for changes so that edits made by another process are picked up and broadcasted to its connected clients.
+Passing a file path to the `sync` option makes the store persistent across server restarts and enables collaboration even when several kernels run in different processes. Every update is appended to the file as a binary Yjs CRDT update. Each server watches the file for changes so that edits made by another process are picked up and broadcasted to its connected clients.
 
 ```python
 store = create_store({"count": 0}, sync="./shared_state.bin")
