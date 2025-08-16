@@ -6,9 +6,8 @@ import threading
 import uuid
 import weakref
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, Optional, Union
 
-from pycrdt import ArrayEvent, MapEvent, TextEvent
 from pycrdt._array import Array
 from pycrdt._base import BaseDoc, BaseType, _find_path, _rebuild_obj, base_types
 from pycrdt._doc import Doc
@@ -120,17 +119,7 @@ marshal_as(
            for (var part of path) {
                obj = obj.get(part);
            }
-           let proxy_base;
-           if (obj instanceof Y.Array)
-               proxy_base = [];
-           else if (obj instanceof Y.Map)
-               proxy_base = {};
-           else {
-               proxy_base = obj;
-               console.warn("Unsupported type in path: " + obj.constructor.name);
-           }
-           var proxy = window.valtio.proxy(proxy_base);
-           window.valtio.bind(proxy, obj);
+           var proxy = window.storeLib.makeStore(obj);
            return proxy;
        });""",
 )
@@ -294,22 +283,7 @@ def create_store(
 
 @marshal_as(
     js="""
-var proxyStateMap = valtio.unstable_getInternalStates().proxyStateMap;
-return ((obj) => {
-    if (proxyStateMap.has(obj)) {
-        // if proxy, return snapshot
-        return valtio.snapshot(obj);
-    }
-    // Otherwise, we assume it maybe a tracked proxy
-    var untracked = valtio.getUntracked(obj);
-    if (untracked !== null) {
-        // mark it as used
-        window.valtio.trackMemo(obj);
-        return untracked;
-    }
-    // Otherwise, we assume it is a plain object
-    return obj;
-})
+return window.storeLib.snapshot;
 """
 )
 def snapshot(value):
@@ -325,7 +299,7 @@ return (function(store, callback, notify_in_sync) {
     if (arguments.length > 0) {
         var kwargs = arguments[arguments.length - 1]
         if (kwargs && kwargs.hasOwnProperty("__kwargtrans__")) {
-            delete props.__kwargtrans__;
+            delete kwargs.__kwargtrans__;
             for (var attr in kwargs) {
                 switch (attr) {
                     case 'store': var store = kwargs [attr]; break;
@@ -336,10 +310,10 @@ return (function(store, callback, notify_in_sync) {
     }
     if (callback === undefined) {
         return (callback) => {
-            return window.valtio.subscribe(store, callback, notify_in_sync);
+            return window.storeLib.subscribe(store, callback, notify_in_sync);
         }
     }
-    return window.valtio.subscribe(store, callback, notify_in_sync);
+    return window.storeLib.subscribe(store, callback, notify_in_sync);
 })
 """
 )
@@ -362,96 +336,4 @@ def subscribe(store, callback=None, notify_in_sync=False):
     callable
         A function that can be used to unsubscribe from the changes.
     """
-
-    def convert_and_callback(events: List[Any], transaction):
-        ops = []
-
-        for ev in events:
-            base = list(ev.path)
-
-            if isinstance(ev, MapEvent):
-                for key, delta in ev.keys.items():
-                    path = base + [key]
-                    action = delta["action"]
-
-                    if action == "delete":
-                        ops.append(("delete", path, None, delta["oldValue"]))
-                    else:  # add or update
-                        ops.append(
-                            ("set", path, delta["newValue"], delta.get("oldValue"))
-                        )
-
-            elif isinstance(ev, (ArrayEvent, TextEvent)):
-                delta = ev.delta
-                cursor = 0
-                i = 0
-                while i < len(delta):
-                    d = delta[i]
-
-                    # retain
-                    if "retain" in d:
-                        cursor += d["retain"]
-                        i += 1
-                        continue
-
-                    # delete (+ optional insert right after)
-                    if "delete" in d:
-                        del_cnt = d["delete"]
-                        next_is_insert = i + 1 < len(delta) and "insert" in delta[i + 1]
-
-                        if next_is_insert:
-                            ins_vals = delta[i + 1]["insert"]
-                            # number of positions being *replaced*
-                            rep_cnt = min(del_cnt, len(ins_vals))
-
-                            # collapse replacements as a 'set' op
-                            for k in range(rep_cnt):
-                                path = base + [cursor + k]
-                                ops.append(("set", path, ins_vals[k], None))
-
-                            # extra deletions (if any)
-                            for _ in range(del_cnt - rep_cnt):
-                                path = base + [cursor + rep_cnt]
-                                ops.append(("delete", path, None))
-
-                            # extra insertions (if any)
-                            idx_after_rep = cursor + rep_cnt
-                            for v in ins_vals[rep_cnt:]:
-                                path = base + [idx_after_rep]
-                                ops.append(("set", path, v, None))
-                                idx_after_rep += 1
-
-                            cursor += rep_cnt  # replaced positions count as moved
-                            i += 2  # skip the following insert delta
-                            continue
-
-                        # plain deletions
-                        for _ in range(del_cnt):
-                            ops.append(("delete", base + [cursor], None))
-                        # cursor stays (elements shifted left)
-                        i += 1
-                        continue
-
-                    # insert only
-                    if "insert" in d:
-                        for v in d["insert"]:
-                            ops.append(("set", base + [cursor], v, None))
-                            cursor += 1
-                        i += 1
-                        continue
-
-                    i += 1  # safety – should never reach here
-
-            # otherwise we treat the entire target as a "set" op
-            else:
-                ops.append(("set", base, ev.target, None))
-
-        callback(ops)
-
-    store.observe_deep(convert_and_callback)
-
-    return convert_and_callback
-
-
-TrackedDictPretProxy = dict
-TrackedListPretProxy = list
+    store.observe_deep(callback)
