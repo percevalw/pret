@@ -30,9 +30,13 @@ jobs:
       - name: 'Install hatch'
         run: pip install hatch
 
-      - name: "Build"
+      - name: "Build source distribution"
         run: |
-          hatch build
+          hatch build -t sdist
+
+      - name: "Build wheel distribution"
+        run: |
+          hatch build -t wheel
 
       - name: Publish package
         uses: pypa/gh-action-pypi-publish@release/v1
