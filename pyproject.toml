@@ -107,8 +107,11 @@ dependencies = ["hatch-jupyter-builder"]
 build-function = "hatch_jupyter_builder.npm_builder"
 install-pre-commit-hook = true
 optional-editable-build = false
-build-kwargs = { "build_cmd" = "build", "npm" = ["jlpm"] }
-editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["jlpm"] }
+# switched from jlpm (ie locked yarn) to npm because
+# yarn doesn't always run post-install, which we need to patch yjs
+# waiting for https://github.com/yjs/yjs/pull/731
+build-kwargs = { "build_cmd" = "build", "npm" = ["npm"] }
+editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["npm"] }
 
 [tool.hatch.build]
 artifacts = [
