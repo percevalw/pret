@@ -537,7 +537,7 @@ const plugin: JupyterFrontEndPlugin<null> = {
     ],
     optional: [
         INotebookTracker, // notebookTracker
-        ISettingRegistry, // settingRegistry
+        ISettingRegistry as any, // settingRegistry
         IMainMenu, // menu
         ILoggerRegistry, // loggerRegistry
         ILayoutRestorer, // restorer

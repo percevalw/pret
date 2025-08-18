@@ -9,7 +9,8 @@
     "build:standalone:dev": "webpack --config webpack/webpack.config.js --mode development",
     "build:jupyter": "jupyter labextension build --development True .",
     "build:jupyter:dev": "jupyter labextension build --development True .",
-    "clean": "rm -rf pret/js-extension pret/js-base"
+    "clean": "rm -rf pret/js-extension pret/js-base",
+    "postinstall": "patch-package"
   },
   "peerDependencies": {
     "@jupyterlab/application": "",
@@ -45,6 +46,7 @@
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
     "old-galata": "npm:@jupyterlab/galata@4.5.8",
+    "patch-package": "^8.0.0",
     "prettier": "^2.8.8",
     "process": "^0.11.10",
     "react": "^17.0.2",

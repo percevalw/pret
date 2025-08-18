@@ -90,7 +90,6 @@ export function makeStore<T = any>(
             };
           }
 
-          console.log("PROP", prop);
           const i = Number(prop);
           if (!Number.isNaN(i)) {
             const childY = y.get(i);
@@ -369,4 +368,13 @@ export function useSnapshot<T = any>(node: any): T {
     },
     () => rec.j as T
   );
+}
+
+export const beginTransaction = (
+  proxy: any,
+  origin: any = null,
+)=> {
+  const rec: NodeRec | undefined = proxy?.[NODE];
+  if (!rec) throw new Error("beginTransaction expects a proxy created by makeStore.");
+  return rec.y.doc.beginTransaction(origin);
 }

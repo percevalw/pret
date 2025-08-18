@@ -1,0 +1,148 @@
+# Waiting for https://github.com/yjs/yjs/pull/731
+diff --git a/node_modules/yjs/dist/src/utils/Doc.d.ts b/node_modules/yjs/dist/src/utils/Doc.d.ts
+index d63573a..0127e69 100644
+--- a/node_modules/yjs/dist/src/utils/Doc.d.ts
++++ b/node_modules/yjs/dist/src/utils/Doc.d.ts
+@@ -108,6 +108,7 @@ export class Doc extends ObservableV2<DocEvents> {
+      * @public
+      */
+     public transact<T>(f: (arg0: Transaction) => T, origin?: any): T;
++    public beginTransaction(origin?: any): [Transaction, () => void];
+     /**
+      * Define a shared data type.
+      *
+diff --git a/node_modules/yjs/dist/yjs.cjs b/node_modules/yjs/dist/yjs.cjs
+index f25a750..d4801b8 100644
+--- a/node_modules/yjs/dist/yjs.cjs
++++ b/node_modules/yjs/dist/yjs.cjs
+@@ -584,6 +584,22 @@ class Doc extends observable.ObservableV2 {
+     return transact(this, f, origin)
+   }
+
++  /**
++   * Begins a transaction and returns a callback that finishes it.
++   * This is equivalent to `y.transact(() => { ... })` but
++   * allows you to wrap code without passing a callback.
++   * You must call the returned function to finish the transaction.
++   *
++   * @param {any} [origin=null]
++   * @return {function():void}
++   *
++   * @public
++   * @function
++   */
++  beginTransaction (origin = null) {
++    return beginTransaction(this, origin)
++  }
++
+   /**
+    * Define a shared data type.
+    *
+@@ -3465,6 +3481,33 @@ const transact = (doc, f, origin = null, local = true) => {
+   return result
+ };
+
++const beginTransaction = (doc, origin = null, local = true) => {
++  const transactionCleanups = doc._transactionCleanups
++  let initialCall = false
++  if (doc._transaction === null) {
++    initialCall = true
++    doc._transaction = new Transaction(doc, origin, local)
++    transactionCleanups.push(doc._transaction)
++    if (transactionCleanups.length === 1) {
++      doc.emit('beforeAllTransactions', [doc])
++    }
++    doc.emit('beforeTransaction', [doc._transaction, doc])
++  }
++  return [
++      doc._transaction,
++      () => {
++      if (initialCall) {
++        const finishCleanup = doc._transaction === transactionCleanups[0]
++        doc._transaction = null
++        if (finishCleanup) {
++          // The first transaction ended, now process observer calls and cleanup.
++          cleanupTransactions(transactionCleanups, 0)
++        }
++      }
++    }
++  ]
++}
++
+ class StackItem {
+   /**
+    * @param {DeleteSet} deletions
+@@ -10429,4 +10472,5 @@ exports.tryGc = tryGc;
+ exports.typeListToArraySnapshot = typeListToArraySnapshot;
+ exports.typeMapGetAllSnapshot = typeMapGetAllSnapshot;
+ exports.typeMapGetSnapshot = typeMapGetSnapshot;
++exports.beginTransaction = beginTransaction;
+ //# sourceMappingURL=yjs.cjs.map
+diff --git a/node_modules/yjs/dist/yjs.mjs b/node_modules/yjs/dist/yjs.mjs
+index 42b3916..3ddedd5 100644
+--- a/node_modules/yjs/dist/yjs.mjs
++++ b/node_modules/yjs/dist/yjs.mjs
+@@ -547,6 +547,22 @@ class Doc extends ObservableV2 {
+     return transact(this, f, origin)
+   }
+
++  /**
++   * Begins a transaction and returns a callback that finishes it.
++   * This is equivalent to `y.transact(() => { ... })` but
++   * allows you to wrap code without passing a callback.
++   * You must call the returned function to finish the transaction.
++   *
++   * @param {any} [origin=null]
++   * @return {function():void}
++   *
++   * @public
++   * @function
++   */
++  beginTransaction (origin = null) {
++    return beginTransaction(this, origin)
++  }
++
+   /**
+    * Define a shared data type.
+    *
+@@ -3428,6 +3444,33 @@ const transact = (doc, f, origin = null, local = true) => {
+   return result
+ };
+
++const beginTransaction = (doc, origin = null, local = true) => {
++  const transactionCleanups = doc._transactionCleanups
++  let initialCall = false
++  if (doc._transaction === null) {
++    initialCall = true
++    doc._transaction = new Transaction(doc, origin, local)
++    transactionCleanups.push(doc._transaction)
++    if (transactionCleanups.length === 1) {
++      doc.emit('beforeAllTransactions', [doc])
++    }
++    doc.emit('beforeTransaction', [doc._transaction, doc])
++  }
++  return [
++      doc._transaction,
++      () => {
++      if (initialCall) {
++        const finishCleanup = doc._transaction === transactionCleanups[0]
++        doc._transaction = null
++        if (finishCleanup) {
++          // The first transaction ended, now process observer calls and cleanup.
++          cleanupTransactions(transactionCleanups, 0)
++        }
++      }
++    }
++  ]
++}
++
+ class StackItem {
+   /**
+    * @param {DeleteSet} deletions
+@@ -10289,5 +10332,5 @@ if (glo[importIdentifier] === true) {
+ }
+ glo[importIdentifier] = true;
+
+-export { AbsolutePosition, AbstractConnector, AbstractStruct, AbstractType, YArray as Array, ContentAny, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentString, ContentType, Doc, GC, ID, Item, YMap as Map, PermanentUserData, RelativePosition, Skip, Snapshot, YText as Text, Transaction, UndoManager, UpdateDecoderV1, UpdateDecoderV2, UpdateEncoderV1, UpdateEncoderV2, YXmlElement as XmlElement, YXmlFragment as XmlFragment, YXmlHook as XmlHook, YXmlText as XmlText, YArrayEvent, YEvent, YMapEvent, YTextEvent, YXmlEvent, applyUpdate, applyUpdateV2, cleanupYTextFormatting, compareIDs, compareRelativePositions, convertUpdateFormatV1ToV2, convertUpdateFormatV2ToV1, createAbsolutePositionFromRelativePosition, createDeleteSet, createDeleteSetFromStructStore, createDocFromSnapshot, createID, createRelativePositionFromJSON, createRelativePositionFromTypeIndex, createSnapshot, decodeRelativePosition, decodeSnapshot, decodeSnapshotV2, decodeStateVector, decodeUpdate, decodeUpdateV2, diffUpdate, diffUpdateV2, emptySnapshot, encodeRelativePosition, encodeSnapshot, encodeSnapshotV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, encodeStateVectorFromUpdate, encodeStateVectorFromUpdateV2, equalDeleteSets, equalSnapshots, findIndexSS, findRootTypeKey, getItem, getItemCleanEnd, getItemCleanStart, getState, getTypeChildren, isDeleted, isParentOf, iterateDeletedStructs, logType, logUpdate, logUpdateV2, mergeDeleteSets, mergeUpdates, mergeUpdatesV2, obfuscateUpdate, obfuscateUpdateV2, parseUpdateMeta, parseUpdateMetaV2, readUpdate, readUpdateV2, relativePositionToJSON, snapshot, snapshotContainsUpdate, transact, tryGc, typeListToArraySnapshot, typeMapGetAllSnapshot, typeMapGetSnapshot };
++export { AbsolutePosition, AbstractConnector, AbstractStruct, AbstractType, YArray as Array, ContentAny, ContentBinary, ContentDeleted, ContentDoc, ContentEmbed, ContentFormat, ContentJSON, ContentString, ContentType, Doc, GC, ID, Item, YMap as Map, PermanentUserData, RelativePosition, Skip, Snapshot, YText as Text, Transaction, UndoManager, UpdateDecoderV1, UpdateDecoderV2, UpdateEncoderV1, UpdateEncoderV2, YXmlElement as XmlElement, YXmlFragment as XmlFragment, YXmlHook as XmlHook, YXmlText as XmlText, YArrayEvent, YEvent, YMapEvent, YTextEvent, YXmlEvent, applyUpdate, applyUpdateV2, cleanupYTextFormatting, compareIDs, compareRelativePositions, convertUpdateFormatV1ToV2, convertUpdateFormatV2ToV1, createAbsolutePositionFromRelativePosition, createDeleteSet, createDeleteSetFromStructStore, createDocFromSnapshot, createID, createRelativePositionFromJSON, createRelativePositionFromTypeIndex, createSnapshot, decodeRelativePosition, decodeSnapshot, decodeSnapshotV2, decodeStateVector, decodeUpdate, decodeUpdateV2, diffUpdate, diffUpdateV2, emptySnapshot, encodeRelativePosition, encodeSnapshot, encodeSnapshotV2, encodeStateAsUpdate, encodeStateAsUpdateV2, encodeStateVector, encodeStateVectorFromUpdate, encodeStateVectorFromUpdateV2, equalDeleteSets, equalSnapshots, findIndexSS, findRootTypeKey, getItem, getItemCleanEnd, getItemCleanStart, getState, getTypeChildren, isDeleted, isParentOf, iterateDeletedStructs, logType, logUpdate, logUpdateV2, mergeDeleteSets, mergeUpdates, mergeUpdatesV2, obfuscateUpdate, obfuscateUpdateV2, parseUpdateMeta, parseUpdateMetaV2, readUpdate, readUpdateV2, relativePositionToJSON, snapshot, snapshotContainsUpdate, transact, beginTransaction, tryGc, typeListToArraySnapshot, typeMapGetAllSnapshot, typeMapGetSnapshot };
+ //# sourceMappingURL=yjs.mjs.map
