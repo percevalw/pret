@@ -5,6 +5,7 @@ import os
 import threading
 import uuid
 import weakref
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -337,3 +338,25 @@ def subscribe(store, callback=None, notify_in_sync=False):
         A function that can be used to unsubscribe from the changes.
     """
     store.observe_deep(callback)
+
+
+@marshal_as(
+    js="""
+return (function(store, origin) {
+    const _enter = () => {
+        const txRes = window.storeLib.beginTransaction(store, origin);
+        res.__exit__ = txRes[1];
+        return txRes[0];
+    };
+    const res = {
+        "__enter__": _enter,
+        "__exit__": () => {},
+    };
+    return res;
+})
+"""
+)
+@contextmanager
+def transact(store: Union[AutoArray, AutoMap], origin: Any = None):
+    with store.doc.transaction(origin):
+        yield store
