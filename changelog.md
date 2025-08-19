@@ -1,9 +1,13 @@
+# v0.4.0 (2025-08-19)
+
+- Drop valtio in favor of a YJS based shared state management, with a speedup up to 5x for mutations in large arrays.
+- Fixed prepack command that didn't collect used js modules
+
 # v0.3.0 (2025-07-01)
 
 - Add file system persistence for stores, using concatenations of yjs/pycrdt update binaries. Using file watchers, this also enables collaboration between multiple users using different servers/kernels.
 - Renamed `proxy(..., remote_sync=...)` to `create_store(..., sync=...)` to better reflect the purpose of the function.
 - Fixed front end to support large binary updates
-- Drop valtio in favor of a YJS based shared state management, with a speedup up to 5x for mutations in large arrays.
 
 # v0.2.0 (2025-06-10)
 
