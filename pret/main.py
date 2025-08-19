@@ -207,7 +207,7 @@ def extract_js_dependencies(
         packages.append(ref.module)
 
         imports[
-            ".".join((ref.module._package_name, *js_module_path_parts[:-1]))
+            ".".join((ref.module._js_package_name, *js_module_path_parts[:-1]))
         ].append((js_module_path_parts[-1], f"i_{ref_idx}"))
 
         current = exported

@@ -24,7 +24,7 @@ from asyncio import Future
 from io import BytesIO, StringIO
 from pathlib import Path
 from types import FunctionType
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from weakref import WeakKeyDictionary
 
 import astunparse
@@ -39,6 +39,7 @@ except ImportError:
 ModuleType = type(sys)
 BuiltinFunctionType = type(time.time)
 marshal_overrides = WeakKeyDictionary()
+_current_marshaller: Optional["PretMarshaler"] = None
 
 
 def marshal_as(
@@ -79,8 +80,9 @@ class GlobalRef:
         self.__module__ = module.__name__
 
     def __reduce__(self):
+        global _current_marshaller
         # str is interpreted by pickle as save global, which is exactly what we want
-        shared_marshaler().accessed_global_refs.add(self)
+        _current_marshaller.accessed_global_refs.add(self)
         return self.__module__ + "." + self.name
 
     def __hash__(self):
@@ -282,7 +284,11 @@ def inspect_scopes(f):
 
 
 class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         for base, marshaled in marshal_overrides.items():
             if marshaled[0] == "py" and marshaled[1] in self._encoders:
@@ -332,9 +338,10 @@ class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
         encoder(self, obj)
 
 
-class Pretmarshaler:
-    def __init__(self):
+class PretMarshaler:
+    def __init__(self, allow_error: bool = False):
         self.source_codes = {}
+        self.allow_error = allow_error
         self.accessed_global_refs = set()
         self.encoder = cbor2_encoder.shareable_encoder(self._encoder)
         self.id = uuid.uuid4().hex
@@ -446,9 +453,15 @@ class Pretmarshaler:
         )
         return js_module, imports
 
+    def visit(self, obj):
+        global _current_marshaller
+        _current_marshaller = self
+        self._cbor_encoder.encode(obj)
+        _current_marshaller = None
+
     def dump(self, obj):
         chunk_idx = self.chunk_idx
-        self._cbor_encoder.encode(obj)
+        self.visit(obj)
         blob = self._file.getvalue()
         self.chunk_idx += 1
         header = (
@@ -626,8 +639,15 @@ class Pretmarshaler:
                 )
                 return
             elif inspect.isclass(type(value)):
+                state: Dict = None
                 if isinstance(value, ModuleType):
-                    raise ValueError(value)
+                    # Do we really need to raise here ? Why not just encode the module
+                    # as a dict ? Was this error raised to check that I got no module to
+                    # marshal in some tests ?
+                    # raise ValueError(value)
+                    state = {
+                        k: v for k, v in value.__dict__.items() if not is_builtins(k, v)
+                    }
                 if (
                     hasattr(value, "__reduce__")
                     and type(value).__reduce__ is not object.__reduce__
@@ -652,7 +672,8 @@ class Pretmarshaler:
                         return
                 else:
                     try:
-                        state = value.__dict__
+                        if state is None:
+                            state = value.__dict__
                     except AttributeError:
                         state = {}
                     encoder.encode(
@@ -665,13 +686,35 @@ class Pretmarshaler:
         except (RecursionError, TypeError):
             import traceback
 
-            traceback.print_exc()
-            raise ValueError(
-                f"Could not marshal {value} of type {type(value)}. "
-                "Please ensure it is a marshalable type."
-            )
-        except:
-            raise
+            if self.allow_error:
+                return  # self.encoder(encoder, None)
+
+            else:
+                traceback.print_exc()
+                raise ValueError(
+                    f"Could not marshal {value} of type {type(value)}. "
+                    "Please ensure it is a marshalable type."
+                )
+        except BaseException:
+            if self.allow_error:
+                return  # self.encoder(encoder, None)
+            else:
+                raise
+
+
+def is_builtins(key, value):
+    # TODO expand ? or refacto ?
+    # This is a small utility to check whether something is definitely not
+    # marshalable, so we can skip it.
+    if key.startswith("__") and key.endswith("__"):
+        return True
+    if isinstance(value, (BuiltinFunctionType, types.BuiltinFunctionType)):
+        return True
+    if isinstance(value, (type(Any), type(List))):
+        return True
+    if isinstance(value, ModuleType) and value.__name__ in sys.builtin_module_names:
+        return True
+    return False
 
 
 shared_marshaler: Any = None
@@ -680,7 +723,7 @@ shared_marshaler: Any = None
 def get_shared_marshaler():
     global shared_marshaler
     if shared_marshaler is None or shared_marshaler() is None:
-        marshaler = Pretmarshaler()
+        marshaler = PretMarshaler()
         shared_marshaler = weakref.ref(marshaler)
     return shared_marshaler()
 
