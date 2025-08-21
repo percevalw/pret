@@ -4,8 +4,16 @@ Pret is a library for building full-stack reactive user interfaces in Python, us
 
 ## Installation
 
-```bash
-pip install pret pret-joy  --user
+```bash { data-md-color-scheme="slate" }
+pip install pret pret-joy
+```
+
+To use it with Jupyter, if you install the library in a custom environment (conda, venv, or other),
+you will likely need to tell Jupyter where to find the front-end files.
+You can do this by running the following command (only once):
+
+```bash { data-md-color-scheme="slate" }
+pret update-jupyter-config --apply
 ```
 
 ## Features
