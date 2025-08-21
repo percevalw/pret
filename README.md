@@ -9,7 +9,15 @@ Pret is a library for building full-stack reactive user interfaces in Python, us
 ## Installation
 
 ```bash
-pip install pret pret-joy  --user
+pip install pret pret-joy
+```
+
+To use it with Jupyter, if you install the library in a custom environment (conda, venv, or other),
+you will likely need to tell Jupyter where to find the front-end files.
+You can do this by running the following command (only once):
+
+```bash
+pret update-jupyter-config --apply
 ```
 
 ## Features
@@ -56,7 +64,7 @@ def TodoApp():
 
     def on_key_down(event):
         if event.key == "Enter":
-            state[typed] = False
+            store[typed] = False
             set_typed("")
 
     return Stack(
