@@ -130,7 +130,23 @@ class weakmethod:
 
 @marshal_as(
     js="""
-return () => crypto.randomUUID();
+return () => {
+   const cryptoObj = (globalThis.crypto || globalThis.msCrypto);
+   if (!cryptoObj?.getRandomValues) {
+       throw new Error("Secure RNG unavailable: crypto.getRandomValues not supported.");
+   }
+
+   const bytes = new Uint8Array(16);
+   cryptoObj.getRandomValues(bytes);
+
+   // RFC 4122 version & variant bits
+   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+
+   let hex = "";
+   for (let i = 0; i < 16; i++) hex += bytes[i].toString(16).padStart(2, "0");
+   return hex;
+}
 """
 )
 def make_uuid():
