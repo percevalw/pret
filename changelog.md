@@ -1,8 +1,11 @@
+# v0.4.1 (2025-08-21)
+
+- Added script to update jupyter config to let it know where to find the custom environment data files (including our js artifacts)
+
 # v0.4.0 (2025-08-19)
 
 - Drop valtio in favor of a YJS based shared state management, with a speedup up to 5x for mutations in large arrays.
 - Fixed prepack command that didn't collect used js modules
-- Added script to update jupyter config to let it know where to find the custom environment data files (including our js artifacts)
 
 # v0.3.0 (2025-07-01)
 
