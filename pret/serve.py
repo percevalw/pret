@@ -7,7 +7,6 @@ from typing import Dict, Union
 from quart import (
     Quart,
     Response,
-    abort,
     request,
     send_file,
     send_from_directory,
@@ -62,8 +61,7 @@ def make_app(assets: Dict[str, Union[str, Path]]) -> Quart:
         else:
             return {}
 
-    @app.route("/", defaults={"path": "index.html"})
-    @app.route("/<path:path>")
+    @app.route("/assets/<path:path>")
     async def page_route(path):
         mimetype = mimetypes.guess_type(path)[0]
         if path in assets:
@@ -78,6 +76,12 @@ def make_app(assets: Dict[str, Union[str, Path]]) -> Quart:
             try:
                 return await send_from_directory(assets["*"], path)
             except (KeyError, FileNotFoundError):
-                abort(404)  # If there's no default file, return a 404 error
+                # If no default file, return default page index.html
+                return Response(assets["index.html"], mimetype="text/html")
+
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    async def default_route(path):
+        return Response(assets["index.html"], mimetype="text/html")
 
     return app
