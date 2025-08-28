@@ -100,7 +100,7 @@ plugins:
       cache_safe: true
   - autorefs:
       priority:
-        - .*
+        - "*"
         - reference
   - pret_snippet_renderer:
   - mkdocstrings_options_templates:
