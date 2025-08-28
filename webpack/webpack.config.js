@@ -53,6 +53,7 @@ module.exports = (env) => ({
       title: "Pret",
       template: "./client/standalone/index.ejs",
       inject: false,
+      publicPath: '/assets',
       templateParameters: (compilation, assets, assetTags, options) => {
         return {
           compilation: compilation,

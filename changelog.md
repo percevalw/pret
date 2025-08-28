@@ -1,6 +1,8 @@
 # v0.4.1 (2025-08-21)
 
 - Added script to update jupyter config to let it know where to find the custom environment data files (including our js artifacts)
+- Added routing support, and moved base assets to "/assets"
+- Added a `names` option to `pret stub` to only generate stubs for specific js objects
 
 # v0.4.0 (2025-08-19)
 

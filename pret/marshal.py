@@ -129,6 +129,7 @@ def make_stub_js_module(
     sys.modules[module.__name__] = module
     marshal_as(module, js=f"return pret_modules.js.{global_name};")
     setattr(js, global_name, module)
+    return module
 
 
 @contextlib.contextmanager

@@ -141,7 +141,7 @@ def build(
             index_html_str.replace(
                 "/* PRET_HEAD_TAGS */",
                 "".join(
-                    '<script src="{}"></script>'.format(remote_entry_file)
+                    '<script src="{}"></script>'.format("/assets/" + remote_entry_file)
                     for remote_entry_file, _ in entries
                 ),
             )
@@ -149,7 +149,7 @@ def build(
                 "'__PRET_REMOTE_IMPORTS__'",
                 str([remote_name for _, remote_name in entries]),
             )
-            .replace("__PRET_PICKLE_FILE__", bundle_filename)
+            .replace("__PRET_PICKLE_FILE__", "/assets/" + bundle_filename)
         )
 
         assets = {
@@ -251,6 +251,8 @@ def extract_prebuilt_extension_assets(
     mapping = {}
     entries = []
     for package in set(packages):
+        if package._package_name == "pret":
+            continue
         try:
             # in case it's an editable install
             stub_root = Path(sys.modules[package._stub_qualified_name].__file__).parent

@@ -303,6 +303,7 @@ function getComponentProps(name, sourceString, snakeCaseMapping) {
     includeCompletionsWithInsertText: true
   });
   if (!completions) {
+    console.log("No completions for", name, ":", completions);
     return { props: null, doc: null };
   }
   const program = languageService.getProgram();
@@ -386,7 +387,7 @@ function makeLanguageService(sourceString) {
  * @param jsModuleName: The name of the global client alias for the package
  * @param outputPath: The path to write the python stubs to
  */
-const run = (packagePath, pyPackageName, globalName, outputPath) => {
+const run = (packagePath, pyPackageName, globalName, outputPath, names) => {
   const snakeCaseMapping = {};
   let sourceString = "";
 
@@ -410,7 +411,7 @@ import * as MODULE from "${packagePath}";
 
 <MODULE. />;
 `;
-  let imported = getImported(sourceString);
+  let imported = names.split(",").map(n => n.trim()).filter(n => n.length > 0) || getImported(sourceString);
   console.log(`Found ${imported.length} potential components & functions`);
   // Filter out non-react components
   sourceString = (`
@@ -444,7 +445,7 @@ import * as MODULE from "${packagePath}";`
       .map((name) => {
         const { props, doc } = getFunctionProps(name, sourceString, snakeCaseMapping);
         if (!props) {
-          console.log("Could not generate stub for component", name);
+          console.log("Could not generate stub for function", name);
           return;
         }
         const snakeCaseName = convertToSnakeCase(name);
@@ -493,8 +494,8 @@ function main() {
   // Get command-line arguments
   const args = process.argv.slice(2);
   // Validate command-line arguments
-  if (args.length < 1 || args.length > 4) {
-    console.error("Usage: node index.js <packagePath> <pyPackageName> <globalModuleName> <outputPath>");
+  if (args.length < 1 || args.length > 5) {
+    console.error("Usage: node index.js <packagePath> <pyPackageName> <globalModuleName> <outputPath> <names></names>");
     process.exit(1);
   }
   // Run StubGenerator with the input and output paths
@@ -502,7 +503,8 @@ function main() {
   const pyPackageName = args.length >= 2 ? args[1] : undefined;
   const jsPackageName = args.length >= 3 ? args[2] : undefined;
   const outputPath = args.length >= 4 ? args[3] : undefined;
-  run(packagePath, pyPackageName, jsPackageName, outputPath);
+  const names = args.length >= 5 ? args[4] : "";
+  run(packagePath, pyPackageName, jsPackageName, outputPath, names);
 }
 
 // Check if main, without using require

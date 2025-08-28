@@ -1,7 +1,7 @@
 {
   "name": "pret",
   "main": "client/index.tsx",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "scripts": {
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
     "build:dev": "jlpm clean && jlpm build:standalone:dev && jlpm build:jupyter:dev",
@@ -35,6 +35,8 @@
   "dependencies": {
     "css-loader": "^6.7.3",
     "node-fetch": "^3.3.2",
+    "react-router": "^6.4",
+    "react-router-dom": "^6.4",
     "regenerator-runtime": "^0.13.11",
     "style-loader": "^3.3.2",
     "use-sync-external-store": "^1.2.0",

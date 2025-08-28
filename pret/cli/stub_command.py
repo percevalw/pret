@@ -22,7 +22,7 @@ def get_current_pyproject_name():
 
 
 @app.command()
-def stub(path_to_js_module: str, global_name: str, output_path: str):
+def stub(path_to_js_module: str, global_name: str, output_path: str, names: str):
     script_path = Path(__file__).parent / "generate-py-stubs.js"
     env = os.environ.copy()
     env["NODE_PATH"] = str(Path.cwd())
@@ -37,6 +37,7 @@ def stub(path_to_js_module: str, global_name: str, output_path: str):
             pyproject_name,
             global_name,
             output_path,
+            names,
         ],
         env=env,
         check=True,
