@@ -16,6 +16,7 @@ from pret.ui.joy import Checkbox
 Checkbox(
     label="My first todo",
     checked=True,
+    sx={"m": 1},
 )
 ```
 
@@ -27,6 +28,7 @@ from pret.ui.joy import Checkbox, Stack
 Stack(
     Checkbox(label="My first todo", checked=True),
     Checkbox(label="My second todo", checked=False),
+    sx={"m": 1},
 )
 ```
 
@@ -46,6 +48,7 @@ Stack(
         for todo in todos
     ],
     spacing=2,
+    sx={"m": 1},
 )
 ```
 
@@ -63,6 +66,7 @@ def TodoList(todos):
             for todo in todos
         ],
         spacing=2,
+        sx={"m": 1},
     )
 
 
@@ -88,6 +92,7 @@ Checkbox(
     label="My first todo",
     checked=True,
     on_change=on_change,
+    sx={"m": 1},
 )
 ```
 
@@ -113,6 +118,7 @@ def Counter():
             Typography(f"Count: {count}"),
         ],
         spacing=2,
+        sx={"m": 1},
     )
 
 Counter()
@@ -148,6 +154,7 @@ def TodoList(todos):
             for index, todo in enumerate(todos)
         ],
         spacing=2,
+        sx={"m": 1},
     )
 
 TodoList(todos=todos)

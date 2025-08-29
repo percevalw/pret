@@ -46,6 +46,7 @@ GRID_STYLE = {
     "display": "grid",
     "gridTemplateColumns": "repeat(3, 66px)",
     "gridGap": "2px",
+    "margin": "1em 0"
 }
 
 
