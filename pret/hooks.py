@@ -2,7 +2,6 @@ from typing import (
     Any,
     Callable,
     List,
-    NewType,
     Optional,
     Tuple,
     TypeVar,
@@ -81,13 +80,6 @@ def use_memo(
     Returns a memoized value, computed from the provided function.
     The function will only be re-executed if any of the dependencies change.
 
-    !!! note
-
-        Ensure that dependencies are simple values like int, str, bool
-        to avoid unnecessary re-executions, as these values are converted to
-        javascript objects, and converting complex objects may not ensure
-        referential equality.
-
     Parameters
     ----------
     fn: Callable[[], T]
@@ -134,7 +126,7 @@ def use_ref(initial_value: "RefValueType") -> "RefType[RefValueType]":
     return js.React.useRef(initial_value)
 
 
-C = NewType("C", Callable[..., Any])
+C = TypeVar("C", bound=Callable[..., Any])
 
 
 @marshal_as(
@@ -151,13 +143,6 @@ def use_callback(
     re-renders, as long as the dependencies don't change, meaning the last
     callback function passed to this function will be used between two re-renders.
 
-    !!! note
-
-        Ensure that dependencies are simple values like int, str, bool
-        to avoid unnecessary re-executions, as these values are converted to
-        JavaScript objects, and converting complex objects may not ensure
-        referential equality.
-
     Parameters
     ----------
     callback: C
@@ -165,9 +150,10 @@ def use_callback(
     dependencies: Optional[List]
         The dependencies that will trigger a re-execution of the callback.
 
-    Returns
-    -------
-
+    Parameters
+    ----------
+    callback: C
+        The callback function
     """
     return js.React.useCallback(callback, dependencies)
 
@@ -181,13 +167,6 @@ def use_effect(effect: "Callable" = None, dependencies: "Optional[List]" = None)
     The effect runs after every render by default. If `dependencies` are provided,
     the effect runs whenever those values change. Therefore, if `dependencies` is an
     empty array, the effect runs only once after the initial render.
-
-    !!! note
-
-        Ensure that dependencies are simple values like int, str, bool
-        to avoid unnecessary re-executions, as these values are converted to
-        javascript objects, and converting complex objects may not ensure
-        referential equality.
 
     Parameters
     ----------
@@ -225,18 +204,6 @@ def use_body_style(styles):
     use_effect(apply_styles, [styles])
 
 
-# @overload
-# def use_store_snapshot(
-#     proxy_object: "Union[DictPretProxy, TrackedDictPretProxy]",
-# ) -> "TrackedDictPretProxy": ...
-#
-#
-# @overload
-# def use_store_snapshot(
-#     proxy_object: "Union[ListPretProxy, TrackedListPretProxy]",
-# ) -> "TrackedListPretProxy": ...
-
-
 @marshal_as(js="return window.storeLib.useSnapshot")
 def use_store_snapshot(proxy_object):
     """
@@ -269,7 +236,7 @@ return function use_event_callback(callback) {
 }
 """
 )
-def use_event_callback(callback: "C"):
+def use_event_callback(callback: "C") -> "C":
     """
     This hook is used to store a callback function that will be called when an event
     is triggered. The callback function can be changed without triggering a re-render
@@ -284,9 +251,4 @@ def use_event_callback(callback: "C"):
     ----------
     callback: C
         The callback function
-
-    Returns
-    -------
-    C
-        The wrapped callback function
     """

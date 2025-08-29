@@ -101,6 +101,7 @@ def TodoList():  # (1)!
             for i, todo in enumerate(todos)
         ],
         spacing=2,
+        sx={"m": "1em"},
     )
 
 
@@ -129,6 +130,7 @@ def RemainingTodoCounter():
         f"Number of unfinished todos: {num_remaining}.",
         br(),
         "Click todos in the previous component to change the count.",
+        sx={"m": "1em"},
     )
 
 RemainingTodoCounter()

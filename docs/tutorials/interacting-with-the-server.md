@@ -14,20 +14,24 @@ For instance, let's take a look at the following component:
 import time
 
 from pret import component
-from pret.ui.react import br
+from pret.ui.react import br, div
 
 static_time = str(time.time())
+
 
 def dynamic_client_time():
     return str(time.time())
 
+
 @component
 def ShowCurrentWorkingDirectory():
-    return [
+    return div(
         f"Current time when this App was built: {static_time}",
         br(),
         f"Current CLIENT time when this App is rendered: {dynamic_client_time()}",
-    ]
+        style={"margin": "1em 0"}
+    )
+
 
 ShowCurrentWorkingDirectory()
 ```
@@ -73,19 +77,20 @@ def ShowCurrentWorkingDirectory():
 
     use_effect(on_load, [])
 
-    return [
+    return div(
         f"Current time when this App was built: {static_time}",
         br(),
         f"Current CLIENT time when this App is rendered: {dynamic_client_time()}",
         br(),
         f"Current SERVER time when this App is rendered: {server_time or 'Waiting for server...'}",
-    ]
+        style={"margin": "1em 0"}
+    )
+
 
 ShowCurrentWorkingDirectory()
 ```
 
 Since this app is hosted on GitHub Pages, there is no server-side environment to access. However, you can run this code in a notebook to see the difference between the client and server working directories.
-
 
 ## Synchronizing client and server-side stores
 
@@ -110,7 +115,11 @@ def Counter():
     def increment(event):
         store["count"] += 1
 
-    return Button(f"Count: {tracked['count']}. Click to increment", on_click=increment)
+    return Button(
+        f"Count: {tracked['count']}. Click to increment",
+        on_click=increment,
+        sx={"m": 1},
+    )
 
 
 Counter()
