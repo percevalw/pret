@@ -1,3 +1,7 @@
+# Unreleased
+
+- Fix `pret update-jupyter-config` to support venv and envs with no existing configs
+
 # v0.4.1 (2025-08-21)
 
 - Added script to update jupyter config to let it know where to find the custom environment data files (including our js artifacts)

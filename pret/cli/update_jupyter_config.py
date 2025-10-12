@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import ast
-import os
 import re
 import shutil
 import sys
@@ -49,11 +48,14 @@ def find_home_config_dir() -> Path:
         cfg_paths = [Path.home() / ".jupyter"]
 
     home = Path.home().resolve()
-    env_prefix = Path(os.environ.get("CONDA_PREFIX", sys.prefix)).resolve()
+    env_prefix = Path(sys.prefix).resolve()
 
     # Prefer the first path that is under HOME and not under the env prefix
     for p in cfg_paths:
+        print(f"Considering jupyter config file path: {p}")
+    for p in cfg_paths:
         if str(p).startswith(str(home)) and not str(p).startswith(str(env_prefix)):
+            print(f"Selected jupyter config file path: {p} ✅")
             return p
 
     # Otherwise default to ~/.jupyter
@@ -64,7 +66,7 @@ def env_labextensions_dir() -> Path:
     """
     Compute <env>/share/jupyter/labextensions for the active environment.
     """
-    env_prefix = Path(os.environ.get("CONDA_PREFIX", sys.prefix)).resolve()
+    env_prefix = Path(sys.prefix).resolve()
     return env_prefix / "share" / "jupyter" / "labextensions"
 
 
@@ -74,7 +76,7 @@ def ensure_dir(path: Path, dry_run: bool = True) -> None:
 
 
 def set_extra_labextensions_path(
-    cfg_file: Path, labext_dir: Path, dry_run: bool = True
+    cfg_file: Path, labext_dir: str, dry_run: bool = True
 ) -> Tuple[str, str, str]:
     """
     Create or update jupyter_server_config.py to set:
@@ -103,9 +105,10 @@ def set_extra_labextensions_path(
         old_values = ast.literal_eval(old_line_match.group(1))
         if isinstance(old_values, str):
             old_values = [old_values]
+        old_values = list(old_values)
         if labext_dir in old_values:
             print(f"⚠️ Warning: {labext_dir} was already in extra_labextensions_path")
-            old_values.remove(labext_dir)
+            old_values = [x for x in old_values if x != labext_dir]
         old_values = ", ".join(f'"{v}"' for v in old_values)
         new_line = f'{var_name} = ["{str(labext_dir)}", {old_values}]\n'
     else:
@@ -129,7 +132,7 @@ def set_extra_labextensions_path(
         cfg_file.write_text(content, encoding="utf-8")
 
     return (
-        old_line.strip(),
+        old_line.strip() if old_line else None,
         pattern.search(content).group().strip(),
         str(backup_path) if backup_path else "",
     )
