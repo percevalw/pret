@@ -25,8 +25,8 @@ Pret provides a simple way to manage state in your components. A store, powered 
 To create a store, we use the `create_store` wrapper:
 
 ```python
-from pret import create_store
-from pret.store import subscribe
+from pret.store import create_store, subscribe
+
 
 store = create_store(
     {
@@ -74,7 +74,8 @@ Now that we have a store object, we can use it in our components. To let Pret kn
 
 ```python { .render-with-pret }
 from pret import component, use_store_snapshot, create_store
-from pret.ui.joy import Checkbox, Stack
+from pret_joy import Checkbox, Stack
+
 
 store = create_store({
     "todos": [
@@ -118,8 +119,9 @@ Let's display the number of remaining todos in the list. We will
 use the same `store` object as the component above.
 
 ```python { .render-with-pret }
-from pret.ui.joy import Typography
-from pret.ui.react import br
+from pret.react import br
+from pret_joy import Typography
+
 
 @component
 def RemainingTodoCounter():
