@@ -2,10 +2,10 @@
 
 Let's build a simple TicTacToe game using Pret. We will build a simple game where two players can play against each other.
 
-```{ .python .render-with-pret }
+```python { .render-with-pret }
 from pret import create_store, component
-from pret.ui.react import button, div
 from pret.hooks import use_store_snapshot
+from pret.react import button, div
 
 state = create_store({
     "board": [0] * 9,

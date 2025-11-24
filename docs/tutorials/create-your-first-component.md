@@ -10,8 +10,8 @@ Under the hood, we use React and React libraries to render the UI.
 Our app should be able to display a list of todos, where each todo is described by a text and a boolean indicating whether it is done or not.
 Let's use Joy's Checkbox for this:
 
-```{ .python .render-with-pret }
-from pret.ui.joy import Checkbox
+```python { .render-with-pret }
+from pret_joy import Checkbox
 
 Checkbox(
     label="My first todo",
@@ -22,8 +22,8 @@ Checkbox(
 
 Great ! We successfully declared and rendered our first component. Let's make it a list. We will use the Stack component to stack multiple components vertically. To compose components, we pass checkboxes as positional arguments (or a list) to the Stack component, and Pret will render them as children of the Stack component.
 
-```{ .python .render-with-pret }
-from pret.ui.joy import Checkbox, Stack
+```python { .render-with-pret }
+from pret_joy import Checkbox, Stack
 
 Stack(
     Checkbox(label="My first todo", checked=True),
@@ -34,8 +34,8 @@ Stack(
 
 Instead of hardcoding the todos, we can use a list of todos and a loop to render them:
 
-```{ .python .render-with-pret }
-from pret.ui.joy import Checkbox, Stack
+```python { .render-with-pret }
+from pret_joy import Checkbox, Stack
 
 todos = [
     {"text": "My first todo", "done": True},
@@ -54,9 +54,9 @@ Stack(
 
 We can turn this into a TodoList component, so that we can reuse it later:
 
-```{ .python .render-with-pret }
+```python { .render-with-pret }
 from pret import component
-
+from pret_joy import Checkbox, Stack
 
 @component
 def TodoList(todos):
@@ -79,9 +79,8 @@ TodoList(todos=todos)  # (1)!
 
 Now that we have a list of todos, we want to be able to mark them as done or not. We can use the `on_change` event of the Checkbox component to react to changes. For now, let's just make a popup appear when a todo is checked or unchecked.
 
-```{ .python .render-with-pret }
-from pret.ui.joy import Checkbox, Stack
-
+```python { .render-with-pret }
+from pret_joy import Checkbox, Stack
 
 def on_change(event):
     checked = event.target.checked
@@ -100,10 +99,9 @@ Checkbox(
 
 Our app is still a bit static : you may have noticed that you cannot change the value of the checboxes. We need to add state to our app to keep track of the todos' state. Let's start simple by making a Counter component that increments a counter each time a button is clicked. We can use the `use_state` hook, which allows us to create a state variable that will persist across renders (calls of our component) and trigger a re-render when its value changes.
 
-```{ .python .render-with-pret }
-from pret.ui.joy import Button, Typography, Stack
+```python { .render-with-pret }
 from pret import component, use_state
-
+from pret_joy import Button, Typography, Stack
 
 @component
 def Counter():
@@ -126,9 +124,9 @@ Counter()
 
 As you can see, every time you click the button, the state changes which triggers a re-render of the component. This is how we can make our TodoList component interactive. We will use the `use_state` hook to keep track of the todos' state.
 
-```{ .python .render-with-pret }
-from pret.ui.joy import Checkbox, Stack
+```python { .render-with-pret }
 from pret import use_state, component
+from pret_joy import Checkbox, Stack
 
 todos = [
     {"text": "My first todo", "done": True},

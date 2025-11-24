@@ -78,7 +78,7 @@ exclude = [
     ".pytest_cache",
     ".venv",
     "build",
-    "pret/ui/react.py"
+    "pret/react.py"
 ]
 line-length = 88
 lint.select = [

@@ -1,7 +1,7 @@
 import os
 
 from pret import component, create_store, use_state, use_store_snapshot
-from pret.ui.react import div, input, label, p
+from pret.react import div, input, label, p
 
 state = create_store(
     {

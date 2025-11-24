@@ -11,13 +11,6 @@ from typing_extensions import Protocol
 
 from pret.marshal import js, marshal_as
 
-# from pret.store import (
-#     DictPretProxy,
-#     ListPretProxy,
-#     TrackedDictPretProxy,
-#     TrackedListPretProxy,
-# )
-
 StateValueType = TypeVar("StateValueType")
 
 
@@ -36,8 +29,8 @@ def use_state(
     --------
 
     ```python
-    from pret.ui.react import div, button, p
     from pret import component, use_state
+    from pret.react import div, button, p
 
 
     @component
