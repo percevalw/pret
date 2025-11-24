@@ -14,7 +14,7 @@ For instance, let's take a look at the following component:
 import time
 
 from pret import component
-from pret.ui.react import br, div
+from pret.react import br, div
 
 static_time = str(time.time())
 
@@ -52,7 +52,7 @@ At the moment, it is not possible to directly await the result of the server fun
 import time
 
 from pret import component, server_only, use_effect, use_state
-from pret.ui.react import br
+from pret.react import br, div
 
 
 @server_only
@@ -99,7 +99,7 @@ In the last [Sharing state]("./sharing-state.md") tutorial, we saw how to create
 Pret offers a simple way to synchronize this store object between the client and the server, by using the `sync` option in the `create_store` function. This option will keep both server and client states in sync whenever one of them is updated. Under the hood, the store is managed as a CRDT (Conflict-free Replicated Data Type) with [Yjs](https://github.com/yjs/yjs) and [py-crdt](https://github.com/y-crdt/pycrdt), and only the changes are sent to the other side.
 
 ```python { .render-with-pret }
-from pret.ui.joy import Button
+from pret_joy import Button
 from pret import component, create_store
 from pret.hooks import use_store_snapshot
 

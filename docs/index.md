@@ -40,7 +40,7 @@ Copy and paste the following code in a notebook:
 
 ```python { .render-with-pret }
 from pret import component, create_store, run, use_state, use_store_snapshot
-from pret.ui.joy import Checkbox, Input, Stack, Typography
+from pret_joy import Checkbox, Input, Stack, Typography
 
 state = create_store(
   {
