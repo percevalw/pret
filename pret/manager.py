@@ -84,7 +84,7 @@ def function_identifier(func):
     import inspect
 
     module = inspect.getmodule(func)
-    module_name = module.__name__
+    module_name = module.__name__ if module is not None else "__main__"
     qual_name = func.__qualname__
 
     identifier = f"{module_name}.{qual_name}"
@@ -161,17 +161,40 @@ class Manager:
         # This would require making a custom WeakValueDictionary that can watch
         # the content of the value tuples
         self.functions = WeakValueDictionary()
+        self.refs = WeakValueDictionary()
         self.states: "WeakValueDictionary[str, Any]" = WeakValueDictionary()
         self.states_subscriptions: "WeakKeyDictionary[Any, Any]" = WeakKeyDictionary()
         self.call_futures = {}
         self.disabled_state_sync = set()
         self.uid = make_uuid()
         self._current_origin = self.uid
+        self.register_function(self.call_ref_method, "<ref_method>")
+        self.last_messages = []
 
     def send_message(self, method, data):
         raise NotImplementedError()
 
+    def register_ref(self, ref_id, ref):
+        self.refs[ref_id] = ref
+
+    def call_ref_method(self, ref_id, method_name, args, kwargs):
+        ref = self.refs.get(ref_id)
+        if ref is None:
+            print(f"Reference with id {ref_id} not found")
+        if ref.current is None:
+            return
+        method = ref.current[method_name]
+        return method(*args, **kwargs)
+
+    def remote_call_ref_method(self, ref_id, method_name, args, kwargs):
+        return self.send_call(
+            "<ref_method>",
+            (ref_id, method_name, args, kwargs),
+            {},
+        )
+
     def handle_message(self, method, data):
+        self.last_messages.append([method, data])
         if method == "call":
             return self.handle_call_msg(data)
         elif method == "state_change":
@@ -208,7 +231,7 @@ class Manager:
             )
 
     def handle_call_success_msg(self, data):
-        callback_id, value = data["callback_id"], data["value"]
+        callback_id, value = data["callback_id"], data.get("value")
         future = self.call_futures.pop(callback_id, None)
         if future is None:
             return
@@ -271,8 +294,9 @@ class Manager:
             },
         )
 
-    def register_function(self, fn) -> str:
-        identifier = function_identifier(fn)
+    def register_function(self, fn, identifier=None) -> str:
+        if identifier is None:
+            identifier = function_identifier(fn)
         self.functions[identifier] = fn
         return identifier
 
@@ -321,7 +345,23 @@ class JupyterClientManager(Manager):
     def send_message(self, method, data):
         if self.env_handler is None:
             raise Exception("No environment handler set")
+        print("Sending message from Jupyter", method, data)
         self.env_handler.sendMessage(method, data)
+
+    async def handle_comm_message(self, msg):
+        """Called when a message is received from the front-end"""
+        msg_content = msg["content"]["data"]
+        if "method" not in msg_content:
+            return
+        method = msg_content["method"]
+        data = msg_content["data"]
+
+        result = self.handle_message(method, data)
+        if result is not None:
+            # check awaitable, and send back message if resolved is not None
+            result = await result
+            if result is not None:
+                self.send_message(*result)
 
 
 @marshal_as(JupyterClientManager)

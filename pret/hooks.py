@@ -1,3 +1,5 @@
+import functools
+import uuid
 from typing import (
     Any,
     Callable,
@@ -9,9 +11,10 @@ from typing import (
 
 from typing_extensions import Protocol
 
-from pret.marshal import js, marshal_as
+from .manager import get_manager
+from .marshal import js, marshal_as
 
-StateValueType = TypeVar("StateValueType")
+T = TypeVar("T")
 
 
 @marshal_as(
@@ -20,8 +23,8 @@ return window.React.useState
 """
 )
 def use_state(
-    initial_value: "StateValueType",
-) -> "Tuple[StateValueType, Callable[[StateValueType], None]]":
+    initial_value: T,
+) -> Tuple[T, Callable[[T], None]]:
     """
     Returns a stateful value, and a function to update it.
 
@@ -57,9 +60,6 @@ def use_state(
     """
 
 
-T = TypeVar("T")
-
-
 @marshal_as(
     js="""
 return window.React.useMemo
@@ -87,11 +87,33 @@ def use_memo(
     """
 
 
-RefValueType = TypeVar("RefValueType")
+def make_client_ref(_id):
+    ref = window.React.createRef()  # noqa: F821
+    get_manager().register_ref(_id, ref)
+    return ref
 
 
-class RefType(Protocol[RefValueType]):
-    current: RefValueType
+class RemoteRefCurrent:
+    def __init__(self, _id):
+        self._id = _id
+
+    def _remote_call(self, method_name, *args, **kwargs):
+        return get_manager().remote_call_ref_method(self._id, method_name, args, kwargs)
+
+    def __getattr__(self, method_name):
+        return functools.partial(self._remote_call, method_name)
+
+
+class RemoteRef:
+    def __init__(self, current: RemoteRefCurrent):
+        self.current = current
+
+    def __reduce__(self):
+        return make_client_ref, (self.current._id,)
+
+
+class RefType(Protocol[T]):
+    current: T
 
 
 @marshal_as(
@@ -99,12 +121,29 @@ class RefType(Protocol[RefValueType]):
 return window.React.useRef
 """
 )
-def use_ref(initial_value: "RefValueType") -> "RefType[RefValueType]":
+def use_ref(initial_value: "T" = None) -> "RefType[T]":
     """
     Returns a mutable ref object whose `.current` property is initialized to the
     passed argument.
 
     The returned object will persist for the full lifetime of the component.
+
+    If called from the Python kernel/server side, it will create a RemoteRef object,
+    which can only be used to call methods/getters on the remote ref (no property
+    access) and get the results as futures.
+
+    Visit the [Widgets](/tutorials/widgets) tutorial to learn more about using
+    refs in Pret.
+
+    !!! note "`current` Property"
+
+        Because refs are mutable containers whose contents can change without causing
+        re-renders, React stores the actual value in a .current property so the ref
+        object itself stays stable while its contents update freely.
+
+        To keep this behavior consistent between server and client side calls to
+        `use_ref`, the value of a ref is always accessed through the `.current`
+        property.
 
     Parameters
     ----------
@@ -113,10 +152,86 @@ def use_ref(initial_value: "RefValueType") -> "RefType[RefValueType]":
 
     Returns
     -------
-    RefType[RefValueType]
+    RefType[T]
         The ref object
     """
-    return js.React.useRef(initial_value)
+    return RemoteRef(RemoteRefCurrent(uuid.uuid4().hex))
+
+
+@marshal_as(js="return window.React.useImperativeHandle")
+def use_imperative_handle(
+    ref: Optional[RefType[T]],
+    create_handle: Callable[[], T],
+    dependencies: Optional[List] = None,
+) -> None:
+    """
+    Safely binds a custom value or API to a parent's ref.
+
+    Unlike manually setting `ref.current`, this hook automatically handles the
+    lifecycle: it updates the ref when dependencies change and cleans it up
+    (resets it to `None`) when the component unmounts.
+
+    Use this to expose specific methods (like `focus` or `reset`) to a parent, rather
+    than giving them direct access to internal DOM nodes.
+
+    Example
+    -------
+
+    ```python
+    from pret import component, use_ref, use_imperative_handle
+    from pret.react import button, div, input
+
+
+    @component
+    def CustomInput(handle):
+        # 1. The internal ref connects to the actual DOM element
+        internal_input_ref = use_ref(None)
+
+        # 2. We define what the parent is allowed to see/do and attach
+        # that API to the handle passed down from the parent
+        use_imperative_handle(
+            handle,
+            lambda: {
+                "reset_and_focus": lambda: (
+                    setattr(internal_input_ref.current, "value", ""),
+                    internal_input_ref.current.focus(),
+                )
+            },
+            [],
+        )
+
+        return input(placeholder="Type here...", ref=internal_input_ref)
+
+
+    @component
+    def App():
+        # The parent creates a ref
+        input_controller = use_ref(None)
+
+        def on_click(event):
+            # The parent calls the custom method defined in the child
+            input_controller.current.reset_and_focus()
+
+        return div(
+            # Pass the ref as a regular prop named 'handle'
+            CustomInput(handle=input_controller),
+            button("Reset Form", onClick=on_click),
+        )
+    ```
+
+    Visit the [Widgets](/tutorials/widgets) tutorial to learn more about using
+    `use_imperative_handle` in Pret.
+
+    Parameters
+    ----------
+    ref: RefType | None
+        The ref object passed in from the parent component (via a prop).
+    create_handle: Callable[[], Any]
+        A function that returns the custom object/API to be assigned to `ref.current`.
+    dependencies: List | None
+        Optional dependencies. If these change, the handle is re-created.
+    """
+    return js.React.useImperativeHandle(ref, create_handle, dependencies)
 
 
 C = TypeVar("C", bound=Callable[..., Any])
@@ -140,8 +255,8 @@ def use_callback(
     ----------
     callback: C
         The callback function
-    dependencies: Optional[List]
-        The dependencies that will trigger a re-execution of the callback.
+    dependencies: List | None
+        The dependencies that will trigger a re-assignment of the callback.
 
     Parameters
     ----------
