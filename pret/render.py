@@ -200,6 +200,19 @@ class Ref:
 
 
 class Renderable:
+    """
+    A Renderable is the blueprint for a React component that can be rendered
+    in a Jupyter notebook. When Jupyter sees it (for instance you call `display()`
+    on it), or it is the result of the last expression in a cell, it will
+    send the (transpiled) app code and app state to the frontend, which will
+    then render using React.
+
+    When multiple Renderables are sent to the frontend, we try to deduplicate
+    the code and data sent, by using a shared persisted marshaler. When facing
+    rendering issues, don't hesitate to restart the kernel, clear the cells and
+    reload the page.
+    """
+
     def __init__(self, obj, detach):
         self.obj = obj
         self.detach = detach
@@ -217,6 +230,9 @@ class Renderable:
         return self.marshaler
 
     def __reduce__(self):
+        # When un-marshaling in the client, this will create a React element
+        # as self.obj is likely the `render_x` function above, which in turn
+        # call create_fn which creates the React element.
         return self.obj, ()
 
     def bundle(self):
