@@ -68,6 +68,9 @@ docs = [
     "metanno",
     "pandas",
 ]
+unreleased-deps = [
+    "metanno @ git+https://github.com/percevalw/metanno.git@main",
+]
 
 # ----- Linting & Testing -----
 [tool.ruff]
