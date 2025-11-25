@@ -47,6 +47,7 @@ nav:
       - tutorials/interacting-with-the-server.md
         # - creating a server function
         # - calling a server function
+      - tutorials/widgets.md
   # - Concepts:
   #     - Overview: concepts/index.md
   #     - concepts/running-in-python.md
