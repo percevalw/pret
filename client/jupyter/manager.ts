@@ -150,8 +150,7 @@ export default class PretJupyterHandler {
 
     handleCommMessage = (msg: KernelMessage.ICommMsgMsg) => {
         try {
-            const {method, data} = msg.content.data as { method: string, data: any };
-            this.appManager.handle_message(method, data);
+            this.appManager.handle_comm_message(msg);
         } catch (e) {
             console.error("Error during comm message reception", e);
         }

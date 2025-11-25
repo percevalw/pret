@@ -2,6 +2,9 @@
 
 - Fix `pret update-jupyter-config` to support venv and envs with no existing configs
 - Better support for lambda functions marshaling
+- New useImperativeHandle hook
+- Support for remote refs, ie `useRef` called on the server/kernel, to interact with client-side components or assemble them without a controller component.
+- Introduced to concept of "Widget"
 
 # v0.4.1 (2025-08-21)
 

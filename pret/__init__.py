@@ -9,6 +9,7 @@ from .store import create_store
 from .hooks import (
     use_callback,
     use_effect,
+    use_imperative_handle,
     use_memo,
     use_ref,
     use_state,
@@ -26,6 +27,7 @@ __all__ = [
     "run",
     "server_only",
     "use_callback",
+    "use_imperative_handle",
     "use_effect",
     "use_memo",
     "use_ref",

@@ -42,6 +42,6 @@ Here are step-by-step guides to get you started.
     **Widgets**
 
     ---
-    Learn about Pret widgets: self-contained interactive components.
+    Learn about Pret widgets: self-contained interactive and controllable components.
 
 <!-- --8<-- [end:tutorials] -->
