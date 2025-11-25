@@ -28,6 +28,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from weakref import WeakKeyDictionary
 
 import astunparse
+from pygetsource import getsource
 from transcrypt.__main__ import main as transcrypt
 
 try:
@@ -555,8 +556,20 @@ class PretMarshaler:
                 encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
                 return
             elif isinstance(value, (FunctionType, BuiltinFunctionType)):
-                # code = pygetsource.getfactory(value.__code__, function_name="_fn_")
-                code = inspect.getsource(value.__code__)
+                try:
+                    code = inspect.getsource(value)
+                    function_name = value.__name__
+                    if function_name == "<lambda>":
+                        function_name = "_fn_"
+                        code = f"_fn_ = {code}"
+                except Exception:
+                    try:
+                        function_name = "_fn_"
+                        code = getsource(value.__code__, as_function=function_name)
+                    except Exception:
+                        raise ValueError(
+                            f"Could not get source code for function {value}"
+                        )
                 code = textwrap.dedent(code)
                 scoped_vars = inspect_scopes(value)
                 if "__class__" in scoped_vars:
@@ -575,7 +588,7 @@ class PretMarshaler:
                     ),
                     body=[
                         tree,
-                        ast.Return(value=ast.Name(id=value.__name__, ctx=ast.Load())),
+                        ast.Return(value=ast.Name(id=function_name, ctx=ast.Load())),
                     ],
                     decorator_list=[],
                 )
