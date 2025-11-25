@@ -36,4 +36,12 @@ Here are step-by-step guides to get you started.
     ---
     Learn how to run server-side code and interact with the server from the client, and vice-versa.
 
+=== card {: href=/tutorials/widgets/ }
+
+    :fontawesome-solid-puzzle-piece:
+    **Widgets**
+
+    ---
+    Learn about Pret widgets: self-contained interactive components.
+
 <!-- --8<-- [end:tutorials] -->
