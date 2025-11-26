@@ -1,4 +1,4 @@
-# Unreleased
+# v0.5.1 (2025-11-26)
 
 - Fix `pret update-jupyter-config` to support venv and envs with no existing configs
 - Better support for lambda functions marshaling
