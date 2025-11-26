@@ -535,10 +535,12 @@ class PretMarshaler:
             elif getattr(value, "__module__", None) in PRE_TRANSPILED_MODULES:
                 # If the function is from a pre-transpiled module, we can just use its
                 # name.
+                # py37-38 issue with typing.List.__name__
+                _name = value.__name__ if hasattr(value, "__name__") else value._name
                 factory_code = (
                     f"def {source_code_id}():\n"
-                    f"  from {PRE_TRANSPILED_MODULES[value.__module__]} import {value.__name__}\n"  # noqa: E501
-                    f"  return {value.__name__}\n"
+                    f"  from {PRE_TRANSPILED_MODULES[value.__module__]} import {_name}\n"  # noqa: E501
+                    f"  return {_name}\n"
                 )
                 self.source_codes[source_code_id] = ("py", factory_code)
                 encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
