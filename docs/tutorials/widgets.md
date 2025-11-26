@@ -100,6 +100,7 @@ def LogWidget(handle=None):
         sx={"minWidth": 220, "m": 1},
     )
 ```
+
 Let's render the counter widget in a cell:
 
 ```python { .render-with-pret }
@@ -259,7 +260,7 @@ def DataFrameWidgetFactory(
             auto_filter=True,
             on_filters_change=set_filters,
             on_cell_change=handle_cell_change,
-            actions=table_handle,
+            handle=table_handle,
             style={"height": "200px"},
         )
 

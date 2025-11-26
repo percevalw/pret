@@ -560,8 +560,7 @@ class PretMarshaler:
                     code = inspect.getsource(value)
                     function_name = value.__name__
                     if function_name == "<lambda>":
-                        function_name = "_fn_"
-                        code = f"_fn_ = {code}"
+                        raise Exception()
                 except Exception:
                     try:
                         function_name = "_fn_"

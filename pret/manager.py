@@ -345,7 +345,6 @@ class JupyterClientManager(Manager):
     def send_message(self, method, data):
         if self.env_handler is None:
             raise Exception("No environment handler set")
-        print("Sending message from Jupyter", method, data)
         self.env_handler.sendMessage(method, data)
 
     async def handle_comm_message(self, msg):
