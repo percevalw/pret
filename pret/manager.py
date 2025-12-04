@@ -182,7 +182,7 @@ class Manager:
         if ref is None:
             print(f"Reference with id {ref_id} not found")
         if ref.current is None:
-            return
+            return None
         method = ref.current[method_name]
         return method(*args, **kwargs)
 
@@ -234,14 +234,14 @@ class Manager:
         callback_id, value = data["callback_id"], data.get("value")
         future = self.call_futures.pop(callback_id, None)
         if future is None:
-            return
+            return None
         future.set_result(value)
 
     def handle_call_failure_msg(self, data):
         callback_id, message = data["callback_id"], data["message"]
         future = self.call_futures.pop(callback_id, None)
         if future is None:
-            return
+            return None
         future.set_exception(Exception(message))
 
     def handle_state_sync_request_msg(self, sync_id=None):
@@ -277,7 +277,7 @@ class Manager:
 
     def handle_state_change_msg(self, data):
         if data["origin"] == self.uid:
-            return
+            return None
         update = b64_decode(data["update"])
         state = self.states[data["sync_id"]]
         self._current_origin = data["origin"]
@@ -351,7 +351,7 @@ class JupyterClientManager(Manager):
         """Called when a message is received from the front-end"""
         msg_content = msg["content"]["data"]
         if "method" not in msg_content:
-            return
+            return None
         method = msg_content["method"]
         data = msg_content["data"]
 
@@ -429,7 +429,7 @@ class JupyterServerManager(Manager):
         """Called when a message is received from the front-end"""
         msg_content = msg["content"]["data"]
         if "method" not in msg_content:
-            return
+            return None
         method = msg_content["method"]
         data = msg_content["data"]
 
