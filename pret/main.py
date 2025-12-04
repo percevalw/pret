@@ -309,6 +309,7 @@ def run(
     dev: bool = True,
     serve: bool = True,
     port: int = 5000,
+    host: Optional[str] = None,
 ):
     """
     Serve the app, after building the app if necessary.
@@ -339,6 +340,8 @@ def run(
         Whether to serve the app after building it.
     port: int
         The port to use for serving the app.
+    host: Optional[str]
+        The host to use for serving the app.
     """
 
     with (
@@ -353,5 +356,5 @@ def run(
     ) as (assets, entries, bundle_filename):
         app = make_app(assets)
         if serve:
-            app.run(debug=dev, port=port, loop=asyncio.get_event_loop())
+            app.run(debug=dev, port=port, host=host, loop=asyncio.get_event_loop())
         return app

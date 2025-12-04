@@ -5,6 +5,7 @@
 - New useImperativeHandle hook
 - Support for remote refs, ie `useRef` called on the server/kernel, to interact with client-side components or assemble them without a controller component.
 - Introduced to concept of "Widget"
+- New option host in `run`, e.g., `run(app, ..., host='0.0.0.0')`
 
 # v0.4.1 (2025-08-21)
 
