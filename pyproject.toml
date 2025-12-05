@@ -6,8 +6,8 @@ authors = [
 ]
 readme = "README.md"
 license = { file = "LICENSE" }
-urls.homepage = "https://github.com/perceval/pret/"
-urls.repository = "https://github.com/perceval/pret/"
+urls.homepage = "https://github.com/percevalw/pret/"
+urls.repository = "https://github.com/percevalw/pret/"
 dynamic = ["version"]
 requires-python = ">=3.7,<4.0,!=3.8.1"
 dependencies = [

@@ -1,6 +1,7 @@
 ![Tests](https://img.shields.io/github/actions/workflow/status/percevalw/pret/tests.yml?branch=main&label=tests&style=flat-square)
 [![Documentation](https://img.shields.io/github/actions/workflow/status/percevalw/pret/docs.yml?branch=main&label=docs&style=flat-square)](https://percevalw.github.io/pret/latest/)
 [![PyPI](https://img.shields.io/pypi/v/pret?color=blue&style=flat-square)](https://pypi.org/project/pret/)
+[![pret](https://labextensions.dev/api/badge/pret?metric=downloads&leftColor=%23555&rightColor=%23F37620&style=flat)](https://labextensions.dev/extensions/pret)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/percevalw/pret/main?urlpath=%2Fdoc%2Ftree%2Fexamples%2FTodos.ipynb)
 
 # PRET
