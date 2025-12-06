@@ -1,4 +1,10 @@
-# v0.5.1 (2025-11-26)
+# Changelog
+
+## Unreleased
+
+- Allow to specify dependencies when using `use_effect` as a decorator
+
+## v0.5.1 (2025-11-26)
 
 - Fix `pret update-jupyter-config` to support venv and envs with no existing configs
 - Better support for lambda functions marshaling
@@ -7,24 +13,24 @@
 - Introduced to concept of "Widget"
 - New option host in `run`, e.g., `run(app, ..., host='0.0.0.0')`
 
-# v0.4.1 (2025-08-21)
+## v0.4.1 (2025-08-21)
 
 - Added script to update jupyter config to let it know where to find the custom environment data files (including our js artifacts)
 - Added routing support, and moved base assets to "/assets"
 - Added a `names` option to `pret stub` to only generate stubs for specific js objects
 
-# v0.4.0 (2025-08-19)
+## v0.4.0 (2025-08-19)
 
 - Drop valtio in favor of a YJS based shared state management, with a speedup up to 5x for mutations in large arrays.
 - Fixed prepack command that didn't collect used js modules
 
-# v0.3.0 (2025-07-01)
+## v0.3.0 (2025-07-01)
 
 - Add file system persistence for stores, using concatenations of yjs/pycrdt update binaries. Using file watchers, this also enables collaboration between multiple users using different servers/kernels.
 - Renamed `proxy(..., remote_sync=...)` to `create_store(..., sync=...)` to better reflect the purpose of the function.
 - Fixed front end to support large binary updates
 
-# v0.2.0 (2025-06-10)
+## v0.2.0 (2025-06-10)
 
 - **Major change**: I dropped pyodide and replaced it with Python → JavaScript transpilation (using Transcrypt) on the server. This comes with a few caveats such as the lack of support for some Python constructs and modules (to be documented), but brings a lot of benefits:
 
@@ -38,17 +44,17 @@
 - Added dependency to [pret-pycrdt](https://github.com/percevalw/pycrdt), fork of [pycrdt](https://github.com/y-crdt/pycrdt) to support identity preservation and therefore pickling, required for our marshaling mechanism
 - Improved notebook-kernel pret manager synchronization and resynchronization
 
-# v0.1.0 (2025-03-20): Initial release :tada:
+## v0.1.0 (2025-03-20): Initial release :tada:
 
 Pret is a library for building full-stack reactive user interfaces in Python, using React as a rendering engine.
 
-## Installation
+### Installation
 
 ```bash
 pip install pret pret-joy
 ```
 
-## Features
+### Features
 
 - **Python, only Python**: pret is written in Python: you can write your both your UI and server actions Python. No need to learn a new language, or to use a transpiler.
 - **Client-side rendering**: unlike other Python UI frameworks, pret runs primarily in the browser. This enables a fast response time to user actions (like hover events), and a better user experience under degraded network conditions.
