@@ -24,7 +24,7 @@ return window.React.useState
 )
 def use_state(
     initial_value: T,
-) -> Tuple[T, Callable[[T], None]]:
+) -> "Tuple[T, Callable[[T | Callable[[T], T]], None]]":
     """
     Returns a stateful value, and a function to update it.
 
@@ -48,12 +48,12 @@ def use_state(
 
     Parameters
     ----------
-    initial_value: StateValueType
+    initial_value: T
         The initial value of the state
 
     Returns
     -------
-    Tuple[StateValueType, Callable[[StateValueType], None]]
+    Tuple[T, Callable[T | Callable[[T], T], None]]
 
         - The current value of the state
         - A function to update the state
@@ -333,23 +333,48 @@ def use_store_snapshot(proxy_object):
 
 @marshal_as(
     js="""
-return function use_event_callback(callback) {
+return function use_event_callback(callback, dependencies) {
     const callbackRef = window.React.useRef(callback);
     callbackRef.current = callback;
 
     return window.React.useCallback(
         (function () {return callbackRef.current(...arguments)}),
-        [],
+        dependencies,
     );
 }
 """
 )
-def use_event_callback(callback: "C") -> "C":
+def _use_event_callback_impl(callback: "C", dependencies: "Optional[List]" = None) -> "C":
+    """Internal JS-implemented hook. Prefer using :func:`use_event_callback`."""
+
+
+def use_event_callback(arg: "Optional[Any]" = None):
     """
-    This hook is used to store a callback function that will be called when an event
-    is triggered. The callback function can be changed without triggering a re-render
-    of the component. The function returns a wrapped callback function that will in
-    turn call the stored callback function.
+    Store a callback function that can be updated without re-rendering, and return a
+    stable wrapped function that will always call the latest callback.
+
+    This can be used in two ways:
+
+    1) With dependencies (decorator factory):
+
+    ```python
+    @use_event_callback([dep1, dep2])
+    def the_callback(*args, **kwargs):
+        ...
+    ```
+
+    2) or without
+
+    ```python
+    @use_event_callback  # (equivalent to @use_event_callback([]))
+    def the_callback(*args, **kwargs):
+        ...
+    ```
+
+    The optional `dependencies` behave like the dependency array of React's
+    `useCallback`. If an empty list is provided, the wrapped callback will be called
+    only once (when the component is mounted).
+    If None is provided, the wrapped callback will be called on every render.
 
     !!! warning
         Do not use this hook if the rendering of the component depends on the callback
@@ -357,6 +382,20 @@ def use_event_callback(callback: "C") -> "C":
 
     Parameters
     ----------
-    callback: C
-        The callback function
+    arg: Callable | List | None
+        Either the callback itself (bare decorator / direct call), or a dependency
+        list when used as `@use_event_callback([...])`.
+
+    Returns
+    -------
+    Callable
+        The wrapped callback function (or a decorator that returns it).
     """
+
+    if callable(arg):
+        return _use_event_callback_impl(arg, [])
+
+    def decorator(callback: "C") -> "C":
+        return _use_event_callback_impl(callback, arg)
+
+    return decorator
