@@ -549,11 +549,11 @@ export function py_iter (iterable) {
     result [Symbol.iterator] = function () {return result;};
     return result;
 }
-export function py_next (iterator) {
-    try {
+export function py_next (iterator, default_val) {               // Called only in a Python context, could receive Python or JavaScript iterator
+    try {                                   // Primarily assume Python iterator, for max speed
         var result = iterator.__next__ ();
     }
-    catch (exception) {
+    catch (exception) {                     // JavaScript iterators are the exception here
         var result = iterator.next ();
         if (result.done) {
             throw StopIteration (new Error ());
@@ -563,6 +563,9 @@ export function py_next (iterator) {
         }
     }
     if (result == undefined) {
+        if (arguments.length == 2) {
+            return default_val;
+        }
         throw StopIteration (new Error ());
     }
     else {
