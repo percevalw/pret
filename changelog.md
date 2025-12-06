@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Allow to specify dependencies when using `use_effect` as a decorator
+- Transpiled `next` should now support a default parameter
 
 ## v0.5.1 (2025-11-26)
 
