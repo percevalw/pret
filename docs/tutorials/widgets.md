@@ -217,7 +217,7 @@ def DataFrameWidgetFactory(
     ]
 
     @server_only
-    def handle_cell_change_server(row_idx, col_key, new_value):
+    def handle_cell_change_server(row_id, row_idx, col_key, new_value):
         df.at[row_idx, col_key] = new_value
 
     @component
@@ -244,13 +244,13 @@ def DataFrameWidgetFactory(
             set_filters(filters)
 
         @use_event_callback
-        def handle_cell_change(row_idx, col_key, new_value):
+        def handle_cell_change(row_id, row_idx, col_key, new_value):
             # Update local state to reflect the change
             updated_data = list(state_data)
             updated_data[row_idx] = {**updated_data[row_idx], col_key: new_value}
             set_state_data(updated_data)
             if on_cell_change is not None:
-                on_cell_change(row_idx, col_key, new_value)
+                on_cell_change(row_id, row_idx, col_key, new_value)
 
         # Return a Table component configured with the data and event handlers
         return Table(
