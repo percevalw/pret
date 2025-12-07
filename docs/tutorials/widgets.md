@@ -291,7 +291,7 @@ from pret_joy import Button
 
 Button(
     "Go to row 50",
-    on_click=lambda: handle.current.scroll_to_row(50),
+    on_click=lambda: handle.current.scroll_to_row_idx(50),
     sx={"m": 1},
 )
 ```
