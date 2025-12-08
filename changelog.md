@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.2 (2025-12-08)
 
 - Allow to specify dependencies when using `use_effect` as a decorator
 - Transpiled `next` should now support a default parameter
