@@ -232,7 +232,7 @@ def DataFrameWidgetFactory(
             lambda: {
                 "set_filters": set_filters,
                 "get_filters": lambda: filters,
-                "scroll_to_row": lambda idx, behavior=None: table_handle.current.scroll_to_row(
+                "scroll_to_row_idx": lambda idx, behavior=None: table_handle.current.scroll_to_row_idx(
                     idx, behavior
                 ),
             },
@@ -281,7 +281,7 @@ You can also control it imperatively by running the following code in another ce
 
 ```python { .no-exec }
 # Scroll to row 50
-handle.current.scroll_to_row(50)
+handle.current.scroll_to_row_idx(50)
 ```
 
 or from a button:
