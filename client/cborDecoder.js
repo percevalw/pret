@@ -286,6 +286,7 @@ export function read() {
 				}
 				token = dataView.getUint32(position)
 				position += 4
+				if (majorType === 1) return -1 - token; // can't safely use negation operator here
 				break
 			case 0x1b:
 				if (majorType == 7) {

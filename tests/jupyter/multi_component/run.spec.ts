@@ -36,7 +36,11 @@ test.describe("Notebook Tests", () => {
       ".jp-Notebook-ExecutionIndicator[data-status=idle]"
     );
     await page.waitForTimeout(1000);
-    await page.notebook.runCellByCell();
+    await page.notebook.runCellByCell({
+      onAfterCellRun: async () => {
+        await page.waitForTimeout(1000);
+      },
+    });
 
     // Await for ".pret-view" element to appear
     await page.waitForSelector(".pret-view");

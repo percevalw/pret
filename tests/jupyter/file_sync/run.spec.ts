@@ -60,6 +60,9 @@ test.describe("Notebook Tests", () => {
     );
     await page.notebook.runCell(0, true);
     await page.waitForSelector(`${activePanel} .pret-view`);
+    await page.waitForSelector(`${activePanel} #faire-à-manger`, {
+      state: "attached",
+    });
 
     await page.notebook.activate(nameBis);
     await page.waitForTimeout(1000);
@@ -73,6 +76,9 @@ test.describe("Notebook Tests", () => {
     );
     await page.notebook.runCell(0, true);
     await page.waitForSelector(`${activePanel} .pret-view`);
+    await page.waitForSelector(`${activePanel} #faire-à-manger`, {
+      state: "attached",
+    });
 
     // Check that input checkbox "faire à manger" is present
     await page.notebook.activate(name);
