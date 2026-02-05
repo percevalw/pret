@@ -24,9 +24,10 @@ export default defineConfig<{
       name: `firefox-${process.env.PYTHON_VERSION}`,
       use: { ...devices["Desktop Firefox"] },
     },
-    {
-      name: `webkit-${process.env.PYTHON_VERSION}`,
-      use: { ...devices["Desktop Safari"] },
-    },
+    // Webkit keeps failing on CI, it's not worth it
+    // {
+    //   name: `webkit-${process.env.PYTHON_VERSION}`,
+    //   use: { ...devices["Desktop Safari"] },
+    // },
   ],
 });

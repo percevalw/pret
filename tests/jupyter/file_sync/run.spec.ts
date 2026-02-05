@@ -101,6 +101,7 @@ test.describe("Notebook Tests", () => {
     expect(await desc.textContent()).toEqual(expectedDescText);
 
     // Check value from python kernel
+    await page.waitForTimeout(1000);
     await page.notebook.addCell("code", "print(state['faire à manger'])");
     await page.notebook.runCell(1, true);
     const output = await page.waitForSelector(
@@ -111,6 +112,7 @@ test.describe("Notebook Tests", () => {
     expect(await output.textContent()).toEqual("False\n");
 
     // Edit value from python kernel
+    await page.waitForTimeout(1000);
     await page.notebook.addCell(
       "code",
       "state['faire la vaisselle'] = True\n" + "state['faire à manger'] = True"
