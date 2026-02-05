@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import threading
 import uuid
+import warnings
 import weakref
 from contextlib import contextmanager
 from pathlib import Path
@@ -97,10 +99,7 @@ class AutoDoc(Doc):
             if isinstance(value, (list, AutoArray)):
                 return [(rec(v) if isinstance(v, BaseType) else v) for v in value]
             elif isinstance(value, (dict, AutoMap)):
-                return {
-                    k: (rec(v) if isinstance(v, BaseType) else v)
-                    for k, v in value.items()
-                }
+                return {k: (rec(v) if isinstance(v, BaseType) else v) for k, v in value.items()}
             elif isinstance(value, BaseDoc):
                 return value.to_py()
             else:
@@ -171,6 +170,10 @@ def create_store(
     data: Any
         Initial data to store in the document. It can be a dictionary, list, or any
         simple value.
+        If a callable is provided, it will be called to get the initial data. This can be
+        useful if the initial data is expensive to create, and you only want to create it if
+        the store is actually being initialized with it (e.g. when using file synchronization
+        and the file doesn't already exist).
     sync: Union[bool, str, os.PathLike]
         There are three options for this parameter:
 
@@ -188,15 +191,23 @@ def create_store(
         sync_id = str(uuid.uuid4())
     doc = AutoDoc({"_": {}}, sync_id=sync_id)
 
+    def make_data():
+        if data is None:
+            return None
+        elif callable(data):
+            return data()
+        else:
+            return data
+
     if not isinstance(sync, (str, os.PathLike)):
-        doc["_"]["_"] = data
+        doc["_"]["_"] = make_data()
     else:
         offset = 36  # uuid prefix length
         path = Path(sync).expanduser()
 
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-            doc["_"]["_"] = data
+            doc["_"]["_"] = make_data()
             sync_bytes = doc.sync_id.encode()
             size_bytes = len(doc.get_update()).to_bytes(4, "little")
             with path.open("wb") as f:
@@ -205,6 +216,18 @@ def create_store(
                 f.write(doc.get_update())
                 offset = f.tell()
         else:
+            if not callable(data):
+                warnings.warn(
+                    f"Initial data provided to create_store will be ignored since the "
+                    f"file {path} already exists. Prefer passing data as a function  that "
+                    f"returns the initial data if you want to ensure it is only used when the "
+                    f"file doesn't exist. Alternatively, you may also prefer "
+                    f"load_store_snapshot to load the data from an existing file.",
+                    category=UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                logging.info("Loading initial data from {path}")
             with path.open("rb") as f:
                 existing_id = f.read(36).decode()
                 sync_id = existing_id
@@ -227,13 +250,13 @@ def create_store(
                         f.seek(start)
                         break
                     size = int.from_bytes(header, "little")
-                    data = f.read(size)
-                    if len(data) < size:
+                    update_data = f.read(size)
+                    if len(update_data) < size:
                         f.seek(start)
                         break
                     offset = f.tell()
                     applying = True
-                    doc.apply_update(data)
+                    doc.apply_update(update_data)
                     applying = False
 
         read_updates()
@@ -280,6 +303,55 @@ def create_store(
         manager.register_state(sync_id, doc)
 
     return doc["_"]["_"]
+
+
+def load_store_snapshot(path: Union[str, os.PathLike]):
+    """
+    Load a snapshot of the store with the given path. This can be used to
+    load the current state of the store without affecting the live store or subscribing to its
+    updates.
+
+    Parameters
+    ----------
+    path: Union[str, os.PathLike]
+        The path of the snapshot to load. This should be the same path that was used to create
+        the store with file synchronization.
+
+    Returns
+    -------
+    Any
+        A python object representing the state of the store.
+    """
+    path = Path(path).expanduser()
+    if not path.exists():
+        raise FileNotFoundError(f"Snapshot file {path} does not exist")
+
+    offset = 36  # uuid prefix length
+    sync_id = None
+
+    def read_updates():
+        nonlocal offset
+        if not path.exists():
+            return
+        with path.open("rb") as f:
+            f.seek(offset)
+            while True:
+                start = f.tell()
+                header = f.read(4)
+                if len(header) < 4:
+                    f.seek(start)
+                    break
+                size = int.from_bytes(header, "little")
+                data = f.read(size)
+                if len(data) < size:
+                    f.seek(start)
+                    break
+                offset = f.tell()
+                doc.apply_update(data)
+
+    doc = AutoDoc({"_": {}}, sync_id=sync_id)
+    read_updates()
+    return doc["_"]["_"].to_py()
 
 
 @marshal_as(

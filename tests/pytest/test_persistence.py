@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from pret.store import create_store
+from pret.store import create_store, load_store_snapshot
 
 
 @pytest.mark.asyncio
@@ -44,7 +44,10 @@ async def test_hydrate_from_existing_file(tmp_path):
     state1.doc._persistence_finalizer.detach()
     state1.doc._persistence_finalizer = None
 
-    state2 = create_store({}, sync=path)
+    with pytest.warns(UserWarning) as warns:
+        state2 = create_store({}, sync=path)
+
+    assert "Initial data provided to create_store will be ignored" in warns[0].message.args[0]
     assert state2.doc.sync_id == state1.doc.sync_id
     await asyncio.sleep(0.05)
     assert state2["count"] == 7
@@ -52,3 +55,6 @@ async def test_hydrate_from_existing_file(tmp_path):
     await asyncio.sleep(0)
     state2.doc._persistence_finalizer.detach()
     state2.doc._persistence_finalizer = None
+
+    snapshot = load_store_snapshot(path)
+    assert snapshot["count"] == 7

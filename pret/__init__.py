@@ -5,7 +5,7 @@ __path__ = pkgutil.extend_path(__path__, __name__)
 from . import ipython_var_cleaner  # noqa: F401
 from .main import run
 from .render import component
-from .store import create_store
+from .store import create_store, load_store_snapshot
 from .hooks import (
     use_callback,
     use_effect,
