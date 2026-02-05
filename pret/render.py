@@ -242,7 +242,7 @@ class Renderable:
         plaintext = repr(self)
         if len(plaintext) > 110:
             plaintext = plaintext[:110] + "…"
-        data, chunk_idx = self.bundle()
+        chunk_idx = self.ensure_marshaler().append((self.obj, get_manager()))
         return {
             "text/plain": plaintext,
             "application/vnd.pret+json": {
@@ -251,7 +251,6 @@ class Renderable:
                 "version_minor": 0,
                 "view_data": {
                     "marshaler_id": self.marshaler.id,
-                    "serialized": data,
                     "chunk_idx": chunk_idx,
                 },
             },

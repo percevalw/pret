@@ -118,9 +118,7 @@ def make_stub_js_module(
         setattr(module, name, ref)
         return ref
 
-    module = ModuleType(
-        full_global_name, f"Fake server side js module for {global_name}"
-    )
+    module = ModuleType(full_global_name, f"Fake server side js module for {global_name}")
     module.__file__ = f"<{full_global_name}>"
     module.__getattr__ = make_stub_js_function
     module._js_package_name = js_package_name
@@ -271,16 +269,11 @@ def inspect_scopes(f):
         stack.extend(k for k in code.co_consts if isinstance(k, types.CodeType))
         global_vars |= {n for n in code.co_names}
 
-    globals_vals = {
-        n: f.__globals__[n] for n in sorted(global_vars) if n in f.__globals__
-    }
+    globals_vals = {n: f.__globals__[n] for n in sorted(global_vars) if n in f.__globals__}
     closure_vals = (
         {}
         if f.__closure__ is None
-        else {
-            n: cell.cell_contents
-            for n, cell in zip(f.__code__.co_freevars, f.__closure__)
-        }
+        else {n: cell.cell_contents for n, cell in zip(f.__code__.co_freevars, f.__closure__)}
     )
     return {**globals_vals, **closure_vals}
 
@@ -333,9 +326,7 @@ class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
         else:
             encoder = self._find_encoder(obj_type) or self._default
         if not encoder:
-            raise cbor2_encoder.CBOREncodeTypeError(
-                f"cannot serialize type {obj_type.__name__}"
-            )
+            raise cbor2_encoder.CBOREncodeTypeError(f"cannot serialize type {obj_type.__name__}")
 
         encoder(self, obj)
 
@@ -349,9 +340,7 @@ class PretMarshaler:
         self.id = uuid.uuid4().hex
         self.chunk_idx = 0
         self._file = BytesIO()
-        self._cbor_encoder = StrictCBOREncoder(
-            self._file, default=self.encoder, value_sharing=True
-        )
+        self._cbor_encoder = StrictCBOREncoder(self._file, default=self.encoder, value_sharing=True)
 
     def transpile(self):
         py_module_string = (
@@ -363,21 +352,25 @@ class PretMarshaler:
         os.makedirs(tmpdir / "__target__", exist_ok=True)
         with open(tmpdir / "__main__.py", "w") as f:
             f.write(py_module_string)
+        tmpfile = str(tmpdir / "__main__.py")
         with redirect_argv(
             *("-b", "-n", "-m", "-p", "window"),
-            str(tmpdir / "__main__.py"),
+            tmpfile,
         ):
-            with capture_stdout() as output:
-                transcrypt()
+            try:
+                with capture_stdout() as output:
+                    transcrypt()
+            except Exception:
+                import traceback
+
+                output = f"Error when transpiling {tmpfile}:\n" + traceback.format_exc()
             if "Saving" not in output.getvalue() or "Error" in output.getvalue():
                 raise Exception(
                     "Could not export your Python app to Javascript with Transcrypt. "
                     "Here is the log: \n{}".format(output.getvalue())
                 )
         res = (tmpdir / "__target__/__main__.js").read_text()
-        res += "\n" + "\n".join(
-            v[1] for k, v in self.source_codes.items() if v[0] == "js"
-        )
+        res += "\n" + "\n".join(v[1] for k, v in self.source_codes.items() if v[0] == "js")
         for k, v in self.source_codes.items():
             assert v[1].strip() != "", f"Source code for {k} is empty: {v}"
         (tmpdir / "__target__/__main__.js").write_text(res)
@@ -428,9 +421,7 @@ class PretMarshaler:
                     non_bracket_part = non_bracket_part[4:].strip()
                     lines.append(f"var {non_bracket_part} = pret_modules['{mod_key}'];")
                 else:
-                    lines.append(
-                        f"var {non_bracket_part} = pret_modules['{mod_key}']._default_;"
-                    )
+                    lines.append(f"var {non_bracket_part} = pret_modules['{mod_key}']._default_;")
 
             if named_part:
                 inner = named_part[1:-1].strip()
@@ -441,9 +432,7 @@ class PretMarshaler:
                         if " as " in s
                         else s
                     )
-                lines.append(
-                    f"var {{ {', '.join(specs)} }} = pret_modules['{mod_key}'];"
-                )
+                lines.append(f"var {{ {', '.join(specs)} }} = pret_modules['{mod_key}'];")
 
             return "\n".join(lines)
 
@@ -461,11 +450,13 @@ class PretMarshaler:
         self._cbor_encoder.encode(obj)
         _current_marshaller = None
 
-    def dump(self, obj):
+    def append(self, obj) -> int:
         chunk_idx = self.chunk_idx
         self.visit(obj)
-        blob = self._file.getvalue()
         self.chunk_idx += 1
+        return chunk_idx
+
+    def _build_bundle(self, blob: bytes):
         header = (
             "if(window.pret_modules===undefined){window.pret_modules={};}\n"
             "var pret_modules=window.pret_modules;\n"
@@ -479,9 +470,7 @@ class PretMarshaler:
             if module_name == "__main__":
                 mods[module_name] = code
             else:
-                mods[module_name] = (
-                    f"pret_modules['{module_name}']=(function(){{{code}}})();"
-                )
+                mods[module_name] = f"pret_modules['{module_name}']=(function(){{{code}}})();"
             deps[module_name] = {pathlib.Path(i).name for i in imps}
 
         indeg = {m: sum(d in mods for d in deps[m]) for m in mods}
@@ -498,12 +487,15 @@ class PretMarshaler:
         order += [m for m in mods if m not in order]  # fallback for cycles
         order.remove("org.transcrypt.__runtime__")  # already bundled in js
 
-        js = (
-            header
-            + "\n\n".join(mods[m] for m in order)
-            + "\n//# sourceURL=dynamic_factory.js"
-        )
-        return [base64.encodebytes(blob).decode(), js], chunk_idx
+        js = header + "\n\n".join(mods[m] for m in order) + "\n//# sourceURL=dynamic_factory.js"
+        return [base64.encodebytes(blob).decode(), js]
+
+    def get_serialized(self):
+        return self._build_bundle(self._file.getvalue())
+
+    def dump(self, obj):
+        chunk_idx = self.append(obj)
+        return self.get_serialized(), chunk_idx
 
     def _encoder(self, encoder, value):
         source_code_id = f"pret_factory_{len(self.source_codes)}"
@@ -527,9 +519,7 @@ class PretMarshaler:
                     )
                     self.source_codes[source_code_id] = ("js", factory_code)
                     encoder.encode(
-                        cbor2_encoder.CBORTag(
-                            4000, [source_code_id, list(globals.values())]
-                        )
+                        cbor2_encoder.CBORTag(4000, [source_code_id, list(globals.values())])
                     )
                     return
             elif getattr(value, "__module__", None) in PRE_TRANSPILED_MODULES:
@@ -545,10 +535,7 @@ class PretMarshaler:
                 self.source_codes[source_code_id] = ("py", factory_code)
                 encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
                 return
-            elif (
-                isinstance(value, ModuleType)
-                and value.__name__ in PRE_TRANSPILED_MODULES
-            ):
+            elif isinstance(value, ModuleType) and value.__name__ in PRE_TRANSPILED_MODULES:
                 factory_code = (
                     f"def {source_code_id}():\n"
                     f"  import {PRE_TRANSPILED_MODULES[value.__name__]} as module\n"
@@ -568,9 +555,7 @@ class PretMarshaler:
                         function_name = "_fn_"
                         code = getsource(value.__code__, as_function=function_name)
                     except Exception:
-                        raise ValueError(
-                            f"Could not get source code for function {value}"
-                        )
+                        raise ValueError(f"Could not get source code for function {value}")
                 code = textwrap.dedent(code)
                 scoped_vars = inspect_scopes(value)
                 if "__class__" in scoped_vars:
@@ -597,9 +582,7 @@ class PretMarshaler:
                 factory_code = astunparse.unparse(factory)
                 self.source_codes[source_code_id] = ("py", factory_code)
                 encoder.encode(
-                    cbor2_encoder.CBORTag(
-                        4000, [source_code_id, list(scoped_vars.values())]
-                    )
+                    cbor2_encoder.CBORTag(4000, [source_code_id, list(scoped_vars.values())])
                 )
                 return
             elif isinstance(value, type):
@@ -628,19 +611,11 @@ class PretMarshaler:
                     }
                 )
                 members = [(name, getattr(value, name)) for name in members_names]
-                parent_members = (
-                    [(n, getattr(base, n)) for n in base_members_names] if base else []
-                )
+                parent_members = [(n, getattr(base, n)) for n in base_members_names] if base else []
                 own_members = [
-                    member
-                    for member in members
-                    if member not in parent_members and member[0]
+                    member for member in members if member not in parent_members and member[0]
                 ]
-                methods = [
-                    member
-                    for member in own_members
-                    if isinstance(member[1], FunctionType)
-                ]
+                methods = [member for member in own_members if isinstance(member[1], FunctionType)]
                 encoder.encode(
                     cbor2_encoder.CBORTag(
                         4001,
@@ -660,13 +635,8 @@ class PretMarshaler:
                     # as a dict ? Was this error raised to check that I got no module to
                     # marshal in some tests ?
                     # raise ValueError(value)
-                    state = {
-                        k: v for k, v in value.__dict__.items() if not is_builtins(k, v)
-                    }
-                if (
-                    hasattr(value, "__reduce__")
-                    and type(value).__reduce__ is not object.__reduce__
-                ):
+                    state = {k: v for k, v in value.__dict__.items() if not is_builtins(k, v)}
+                if hasattr(value, "__reduce__") and type(value).__reduce__ is not object.__reduce__:
                     # If the object has a __reduce__ method,
                     # we can use it to get the state
                     reduced = value.__reduce__()
@@ -678,9 +648,7 @@ class PretMarshaler:
                             f"export {{{source_code_id}}};\n"
                         )
                         self.source_codes[source_code_id] = ("js", factory_code)
-                        encoder.encode(
-                            cbor2_encoder.CBORTag(4000, [source_code_id, []])
-                        )
+                        encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
                         return
                     else:
                         encoder.encode(cbor2_encoder.CBORTag(4002, reduced))
@@ -692,9 +660,7 @@ class PretMarshaler:
                     except AttributeError:
                         state = {}
                     encoder.encode(
-                        cbor2_encoder.CBORTag(
-                            4003, [type(value), state, type(value).__name__]
-                        )
+                        cbor2_encoder.CBORTag(4003, [type(value), state, type(value).__name__])
                     )
                     return
             raise ValueError()
@@ -732,7 +698,7 @@ def is_builtins(key, value):
     return False
 
 
-shared_marshaler: Any = None
+shared_marshaler: Optional[weakref.ReferenceType] = None
 
 
 def get_shared_marshaler():

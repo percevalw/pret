@@ -205,8 +205,15 @@ class Manager:
             return self.handle_call_failure_msg(data)
         elif method == "state_sync_request":
             return self.handle_state_sync_request_msg(data.get("sync_id"))
+        elif method == "bundle_request":
+            return self.handle_bundle_request(data)
+        elif method == "bundle_response":
+            return None
         else:
             raise Exception(f"Unknown method: {method}")
+
+    def handle_bundle_request(self):
+        raise NotImplementedError()
 
     async def handle_call_msg(self, data):
         function_id, args, kwargs, callback_id = (
@@ -440,6 +447,37 @@ class JupyterServerManager(Manager):
             if is_awaitable(result):
                 start_async_task(result)
 
+    def handle_bundle_request(self, data):
+        request_id = data.get("request_id")
+        marshaler_id = data.get("marshaler_id")
+        try:
+            if marshaler_id is None:
+                raise Exception("marshaler_id is required")
+            from pret.marshal import get_shared_marshaler
+
+            marshaler = get_shared_marshaler()
+            if marshaler is None or marshaler.id != marshaler_id:
+                raise Exception(f"Marshaler {marshaler_id} not found in current session")
+            serialized = marshaler.get_serialized()
+            return (
+                "bundle_response",
+                {
+                    "request_id": request_id,
+                    "marshaler_id": marshaler_id,
+                    "max_chunk_idx": marshaler.chunk_idx - 1,
+                    "serialized": serialized,
+                },
+            )
+        except Exception as e:
+            return (
+                "bundle_response",
+                {
+                    "request_id": request_id,
+                    "marshaler_id": marshaler_id,
+                    "error": str(e),
+                },
+            )
+
 
 @marshal_as(
     js="""
@@ -466,9 +504,7 @@ class StandaloneClientManager(Manager):
 
         # add a listener with cb to self.handle_message
         self.websocket.addEventListener("message", on_message)
-        self.websocket.addEventListener(
-            "open", lambda: self.send_message("state_sync_request", {})
-        )
+        self.websocket.addEventListener("open", lambda: self.send_message("state_sync_request", {}))
 
     async def send_message(self, method, data):
         response = await fetch(
