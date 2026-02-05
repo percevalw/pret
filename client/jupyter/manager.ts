@@ -16,7 +16,12 @@ import * as KernelMessage from "@jupyterlab/services/lib/kernel/messages";
 
 import useSyncExternalStoreExports from 'use-sync-external-store/shim'
 
-import {PretViewData} from "./widget";
+import {PretSerialized, PretViewData} from "./widget";
+
+type BundleResponse = {
+    serialized: PretSerialized;
+    maxChunkIdx: number;
+};
 
 // @ts-ignore
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
@@ -43,6 +48,13 @@ export default class PretJupyterHandler {
     // Each event calls .then on this promise and replaces it to queue itself
     private unpack: (data: any, unpickler_id: string, chunk_idx: number) => [any, any];
     private appManager: any;
+    private bundleRequests: Map<
+        string,
+        { resolve: (value: BundleResponse) => void; reject: (reason?: any) => void }
+    >;
+    private bundleCache: Map<string, BundleResponse>;
+    private bundleInFlight: Map<string, Promise<BundleResponse>>;
+    private bundleRequestSeq: number;
     public ready: Promise<any>;
     private _readyResolve: (value?: any) => void;
     private _readyReject: (reason?: any) => void;
@@ -54,6 +66,10 @@ export default class PretJupyterHandler {
         this.comm = null;
         this.unpack = makeLoadApp();
         this.appManager = null;
+        this.bundleRequests = new Map();
+        this.bundleCache = new Map();
+        this.bundleInFlight = new Map();
+        this.bundleRequestSeq = 0;
         this.ready = new Promise((resolve, reject) => {
             this._readyResolve = resolve;
             this._readyReject = reject;
@@ -149,6 +165,48 @@ export default class PretJupyterHandler {
 
 
     handleCommMessage = (msg: KernelMessage.ICommMsgMsg) => {
+        const msgContent = msg?.content?.data as
+            | { method?: string; data?: Record<string, unknown> }
+            | undefined;
+        if (msgContent?.method === "bundle_response") {
+            const payload = (msgContent.data ?? {}) as {
+                request_id?: string;
+                marshaler_id?: string;
+                serialized?: PretSerialized;
+                error?: string;
+                max_chunk_idx?: number;
+            };
+            const {request_id, marshaler_id, serialized, error} = payload;
+            const maxChunkIdx =
+                typeof payload.max_chunk_idx === "number" ? payload.max_chunk_idx : -1;
+            const pending = request_id ? this.bundleRequests.get(request_id) : null;
+            if (pending) {
+                this.bundleRequests.delete(request_id);
+                if (error) {
+                    pending.reject(new Error(error));
+                } else if (!serialized) {
+                    pending.reject(
+                        new Error(
+                            `Bundle response for ${marshaler_id || "unknown"} was empty`
+                        )
+                    );
+                } else if (maxChunkIdx < 0) {
+                    pending.reject(
+                        new Error(
+                            `Bundle response for ${marshaler_id || "unknown"} did not include max_chunk_idx`
+                        )
+                    );
+                } else {
+                    pending.resolve({
+                        serialized: serialized as PretSerialized,
+                        maxChunkIdx,
+                    });
+                }
+            } else {
+                console.warn("No pending bundle request found", request_id, marshaler_id);
+            }
+            return;
+        }
         try {
             this.appManager.handle_comm_message(msg);
         } catch (e) {
@@ -192,9 +250,82 @@ export default class PretJupyterHandler {
      * @param view_data
      */
     unpackView({serialized, marshaler_id, chunk_idx}: PretViewData): any {
+        if (!serialized) {
+            throw new Error(`Missing serialized bundle for marshaler ${marshaler_id}`);
+        }
         const [renderable, manager] = this.unpack(serialized, marshaler_id, chunk_idx)
         this.appManager = manager;
         this.appManager.register_environment_handler(this);
         return renderable;
+    }
+
+    async fetchBundle(marshalerId: string, minChunkIdx?: number): Promise<PretSerialized> {
+        const cached = this.bundleCache.get(marshalerId);
+        if (cached && (minChunkIdx === undefined || minChunkIdx <= cached.maxChunkIdx)) {
+            return cached.serialized;
+        }
+        const inflightCached = this.bundleInFlight.get(marshalerId);
+        if (inflightCached) {
+            const inflightResult = await inflightCached;
+            if (
+                minChunkIdx === undefined ||
+                minChunkIdx <= inflightResult.maxChunkIdx
+            ) {
+                return inflightResult.serialized;
+            }
+        }
+
+        const requestId = `bundle-${++this.bundleRequestSeq}`;
+        let resolveFn!: (value: BundleResponse) => void;
+        let rejectFn!: (reason?: any) => void;
+        const pending = new Promise<BundleResponse>((resolve, reject) => {
+            resolveFn = resolve;
+            rejectFn = reject;
+        });
+        this.bundleRequests.set(requestId, {resolve: resolveFn, reject: rejectFn});
+
+        const inflight = pending
+            .then((bundle) => {
+                this.bundleCache.set(marshalerId, bundle);
+                return bundle;
+            })
+            .finally(() => {
+                this.bundleInFlight.delete(marshalerId);
+            });
+        this.bundleInFlight.set(marshalerId, inflight);
+
+        await this.ready;
+        try {
+            this.sendMessage("bundle_request", {
+                marshaler_id: marshalerId,
+                request_id: requestId,
+            });
+        } catch (err) {
+            this.bundleRequests.delete(requestId);
+            this.bundleInFlight.delete(marshalerId);
+            throw err;
+        }
+
+        const bundle = await inflight;
+        if (minChunkIdx !== undefined && minChunkIdx > bundle.maxChunkIdx) {
+            throw new Error(
+                `Bundle for ${marshalerId} only includes chunk ${bundle.maxChunkIdx}, requested ${minChunkIdx}`
+            );
+        }
+        return bundle.serialized;
+    }
+
+    async resolveViewData(viewData: PretViewData): Promise<PretViewData> {
+        if (viewData.serialized) {
+            return viewData;
+        }
+        const serialized = await this.fetchBundle(
+            viewData.marshaler_id,
+            viewData.chunk_idx
+        );
+        return {
+            ...viewData,
+            serialized,
+        };
     }
 }

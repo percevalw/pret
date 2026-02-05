@@ -5,8 +5,10 @@ import { Widget as LuminoWidget } from "@lumino/widgets";
 import PretJupyterHandler from "./manager";
 import Loading from "../components/Loading";
 
+export type PretSerialized = [string, string];
+
 export type PretViewData = {
-  serialized: string;
+  serialized?: PretSerialized;
   marshaler_id: string;
   chunk_idx: number;
 };
@@ -125,9 +127,10 @@ export class PretViewWidget extends LuminoWidget {
 
     const Render = () => {
       if (!this.makeView) {
-        throw this.manager.ready.then(() => {
+        throw this.manager.ready.then(async () => {
           try {
-            this.makeView = this.manager.unpackView(this.viewData);
+            const viewData = await this.manager.resolveViewData(this.viewData);
+            this.makeView = this.manager.unpackView(viewData);
           } catch (e) {
             console.error(e);
             this.makeView = () => <code>{e.toString()}</code>;
