@@ -488,7 +488,7 @@ class PretMarshaler:
         order.remove("org.transcrypt.__runtime__")  # already bundled in js
 
         js = header + "\n\n".join(mods[m] for m in order) + "\n//# sourceURL=dynamic_factory.js"
-        return [base64.encodebytes(blob).decode(), js]
+        return [base64.b64encode(blob).decode("ascii"), js]
 
     def get_serialized(self):
         return self._build_bundle(self._file.getvalue())
@@ -498,7 +498,7 @@ class PretMarshaler:
         return self.get_serialized(), chunk_idx
 
     def _encoder(self, encoder, value):
-        source_code_id = f"pret_factory_{len(self.source_codes)}"
+        source_code_id = f"pret_factory_{self.id}_{len(self.source_codes)}"
         try:
             if value in marshal_overrides:
                 marshalable = marshal_overrides[value]

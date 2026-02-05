@@ -90,14 +90,14 @@ jobs:
         if: ${{ matrix.python-version != '3.7' }}
         run: |
           uv pip install pip "jupyterlab>=4"
-          sh tests/jupyter/run.sh
+          sh tests/jupyter/run.sh tests/jupyter
 
       - name: 'Run tests for JupyterLab 3'
         run: |
           uv pip install pip "jupyterlab<4"
           export PYV=$(python --version | cut -d' ' -f2)
           # webkit keeps failing for obscure reasons with jlab 3
-          sh tests/jupyter/run.sh --project=chromium-$PYV  --project=firefox-$PYV
+          sh tests/jupyter/run.sh tests/jupyter --project=chromium-$PYV  --project=firefox-$PYV
 
       - name: 'Upload blob report'
         uses: actions/upload-artifact@v4
