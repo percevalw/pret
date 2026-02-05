@@ -129,8 +129,31 @@ export class PretViewWidget extends LuminoWidget {
       if (!this.makeView) {
         throw this.manager.ready.then(async () => {
           try {
-            const viewData = await this.manager.resolveViewData(this.viewData);
-            this.makeView = this.manager.unpackView(viewData);
+            const unpackOnce = async () => {
+              const viewData = await this.manager.resolveViewData(this.viewData);
+              this.makeView = this.manager.unpackView(viewData);
+            };
+
+            try {
+              await unpackOnce();
+            } catch (e: any) {
+              const message = String(e?.message ?? e);
+              const retriable =
+                Boolean(e?.incomplete) ||
+                message.includes("Unexpected end of CBOR") ||
+                message.includes("InvalidCharacterError") ||
+                message.includes("chunkIdx") ||
+                message.includes("Bundle response");
+
+              if (retriable && this.viewData?.marshaler_id) {
+                // Clear cache and retry once
+                this.manager.clearBundleCache(this.viewData.marshaler_id);
+                this.manager.clearUnpackCache(this.viewData.marshaler_id);
+                await unpackOnce();
+              } else {
+                throw e;
+              }
+            }
           } catch (e) {
             console.error(e);
             this.makeView = () => <code>{e.toString()}</code>;
