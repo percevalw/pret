@@ -46,7 +46,7 @@ export default class PretJupyterHandler {
 
     // Lock promise to chain events, and avoid concurrent state access
     // Each event calls .then on this promise and replaces it to queue itself
-    private unpack: (data: any, unpickler_id: string, chunk_idx: number) => [any, any];
+    private unpack: ReturnType<typeof makeLoadApp>;
     private appManager: any;
     private bundleRequests: Map<
         string,
@@ -327,5 +327,13 @@ export default class PretJupyterHandler {
             ...viewData,
             serialized,
         };
+    }
+
+    clearBundleCache(marshalerId: string) {
+        this.bundleCache.delete(marshalerId);
+    }
+
+    clearUnpackCache(marshalerId: string) {
+        this.unpack.clearCache(marshalerId);
     }
 }

@@ -102,18 +102,25 @@ addExtension({
 });
 
 export function makeLoadApp() {
-  const cache = new Map();
+  type CacheEntry = [Decoder, Map<number, any>, number];
 
-  return function loadApp(serialized, marshalerId, chunkIdx) {
+  const cache = new Map<string, CacheEntry>();
+
+  type LoadApp = ((serialized: any, marshalerId: string, chunkIdx: number) => any) & {
+    clearCache: (marshalerId?: string) => void;
+  };
+
+  const loadApp = ((serialized: any, marshalerId: string, chunkIdx: number) => {
     if (!cache.has(marshalerId)) {
-      let cached = [
+      const cached: CacheEntry = [
         new Decoder({ useRecords: false, shareReferenceMap: true } as any),
         new Map(),
         0,
       ];
       cache.set(marshalerId, cached);
     }
-    let [decoder, chunkStore, lastOffset] = cache.get(marshalerId);
+    const entry = cache.get(marshalerId)!;
+    let [decoder, chunkStore, lastOffset] = entry;
 
     if (chunkStore.has(chunkIdx)) {
       return chunkStore.get(chunkIdx);
@@ -125,18 +132,41 @@ export function makeLoadApp() {
     const bytes = Uint8Array.from(atob(cborDataB64).slice(lastOffset), (c) =>
       c.charCodeAt(0)
     );
-    const results = decoder.decodeMultiple(bytes);
+    let results: any[];
+    try {
+      results = decoder.decodeMultiple(bytes);
+    } catch (error: any) {
+      // "Unexpected end of CBOR data" is tagged with `incomplete = true` by our decoder.
+      // Reset per-marshaler decode state so the caller can re-fetch + retry.
+      if (error?.incomplete) {
+        cache.delete(marshalerId);
+      }
+      throw error;
+    }
     let nextIdx = chunkStore.size;
     for (const obj of results) {
       chunkStore.set(nextIdx++, obj);
     }
-    cache.get(marshalerId)[2] += bytes.length;
+    entry[2] += bytes.length;
 
     if (!chunkStore.has(chunkIdx)) {
+      // If we didn't reach the requested chunk, the bundle is likely truncated/corrupted.
+      // Clearing state makes retries deterministic.
+      cache.delete(marshalerId);
       throw new RangeError(
         `Decoded ${chunkStore.size} objects, but chunkIdx ${chunkIdx} was not found.`
       );
     }
     return chunkStore.get(chunkIdx);
+  }) as LoadApp;
+
+  loadApp.clearCache = (marshalerId?: string) => {
+    if (marshalerId === undefined) {
+      cache.clear();
+    } else {
+      cache.delete(marshalerId);
+    }
   };
+
+  return loadApp;
 }
