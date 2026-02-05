@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added a new `load_store_snapshot` function to load a Python snapshot of the store state without subscribing to updates or risking mutations. This can be useful for instance in Metanno to load the annotations in a read-only pure Python format for export or processing purposes.
+- We now warn users when they call `create_store` with initial data and a file already exists at the specified path, to prevent accidental overwriting of existing data.
+- `create_store` now also accepts data as a callable that returns the initial data, to support lazy initialization of the store state.
+
 ## v0.5.2 (2025-12-08)
 
 - Allow to specify dependencies when using `use_effect` as a decorator

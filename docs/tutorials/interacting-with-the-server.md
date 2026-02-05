@@ -144,3 +144,15 @@ store = create_store({"count": 0}, sync="./shared_state.bin")
 ```
 
 If another instance of your application uses the same file path, all changes will be merged and synchronized between all clients and servers.
+
+## Loading a snapshot of the store
+
+If you want to load the current state of the store as a Python object without subscribing to updates or risking modifying it, you can use the `load_store_snapshot` function:
+
+```python
+from pret import load_store_snapshot
+
+snapshot = load_store_snapshot("./shared_state.bin")
+print(snapshot, type(snapshot))
+# Out: {'count': 42}, <class 'dict'>
+```
