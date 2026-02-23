@@ -152,7 +152,7 @@ IPWTodoApp()
 ```
 </details>
 
-You also lose some features:
+This alternative implementation also misses out on some of Pret's features:
 
 - the app stops working if the server shuts down
 - hover events cannot be listened to
