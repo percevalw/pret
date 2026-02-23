@@ -457,7 +457,13 @@ class JupyterServerManager(Manager):
 
             marshaler = get_shared_marshaler()
             if marshaler is None or marshaler.id != marshaler_id:
-                raise Exception(f"Marshaler {marshaler_id} not found in current session")
+                raise Exception(
+                    f"Marshaler {marshaler_id} not found in current session.\n"
+                    f"You are likely trying to render an outdated version of the widget, and the "
+                    f"kernel has changed since its info was stored. Remember to save (Ctrl-S) "
+                    f"after you run a cell, and consider restarting the kernel and/or reloading the"
+                    f"page."
+                )
             serialized = marshaler.get_serialized()
             return (
                 "bundle_response",

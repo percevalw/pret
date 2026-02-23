@@ -51,6 +51,8 @@ export const contextToPretJupyterHandlerRegistry = new AttachedProperty({
   create: () => undefined,
 });
 const SETTINGS = { saveState: false };
+const PRET_AUTOSAVE_DELAY_MS = 1500;
+const pendingPretAutosaveByPath = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
  * Iterate through all pret renderers in a notebook.
@@ -200,27 +202,50 @@ export function registerPretJupyterHandler(
     r.manager = ensureManager();
   }
 
-  // Replace the placeholder widget renderer with one bound to this widget
-  // manager.
-  rendermime.removeMimeType(MIMETYPE);
-  rendermime.addFactory(
-    {
-      safe: true,
-      mimeTypes: [MIMETYPE],
-      // @ts-ignore
-      createRenderer: (options) => new PretViewWidget(options, ensureManager()),
-    },
-    0
-  );
+    // Replace the placeholder widget renderer with one bound to this widget
+    // manager.
+    rendermime.removeMimeType(MIMETYPE);
+    rendermime.addFactory(
+        {
+            safe: true,
+            mimeTypes: [MIMETYPE],
+            // @ts-ignore
+            createRenderer: options => {
+                const widget = new PretViewWidget(options, ensureManager());
+                const path = context?.path ?? '';
+                const pendingAutosave = pendingPretAutosaveByPath.get(path);
+                if (pendingAutosave) {
+                    clearTimeout(pendingAutosave);
+                }
+                pendingPretAutosaveByPath.set(
+                    path,
+                    setTimeout(() => {
+                        pendingPretAutosaveByPath.delete(path);
+                        void context?.save?.().catch((reason) => {
+                            console.error(`Failed to autosave PRET notebook ${path}:`, reason);
+                        });
+                    }, PRET_AUTOSAVE_DELAY_MS)
+                );
+                return widget;
+            }
+        },
+        0
+    );
 
-  return new DisposableDelegate(() => {
-    if (rendermime) {
-      rendermime.removeMimeType(MIMETYPE);
-    }
-    if (manager) {
-      manager.dispose();
-    }
-  });
+    return new DisposableDelegate(() => {
+        if (rendermime) {
+            rendermime.removeMimeType(MIMETYPE);
+        }
+        if (manager) {
+            manager.dispose();
+        }
+        const path = context?.path ?? '';
+        const pendingAutosave = pendingPretAutosaveByPath.get(path);
+        if (pendingAutosave) {
+            clearTimeout(pendingAutosave);
+            pendingPretAutosaveByPath.delete(path);
+        }
+    });
 }
 
 export function registerOutputListener(notebook: Notebook, listener) {
