@@ -8,6 +8,7 @@
 - Jupyter outputs now send only `marshaler_id`/`chunk_idx` and fetch bundles on demand. This should reduce the notebooks file size drastically for apps containing large amounts of data, and speed up the rendering of outputs.
 - New "Open in a new browser tab" command on Pret widgets in jupyter to create a new full-viewport view that overlays and hides jupyter simple presentation mode.
 - Rendering a pret widget now autosaves the notebook to limit the kernel-notebook desynchronization issues
+- All tutorials are now runnable notebooks, rendered identically as documentation pages
 
 ## v0.5.2 (2025-12-08)
 

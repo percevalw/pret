@@ -44,4 +44,12 @@ Here are step-by-step guides to get you started.
     ---
     Learn about Pret widgets: self-contained interactive and controllable components.
 
+=== card {: href=/tutorials/from-notebook-to-app/ }
+
+    :fontawesome-solid-rocket:
+    **From notebook to app**
+
+    ---
+    Publish a widget as a standalone app or open it in a dedicated Jupyter tab.
+
 <!-- --8<-- [end:tutorials] -->

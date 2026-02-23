@@ -33,21 +33,22 @@ nav:
   - Getting Started: index.md
   - Tutorials:
       - Overview: tutorials/index.md
-      - tutorials/create-your-first-component.md
+      - tutorials/create-your-first-component.ipynb
         # - composing components
         # - parameterizing components
         # - reacting to events
         # - adding state
-      - tutorials/sharing-state.md
+      - tutorials/sharing-state.ipynb
         # - creating a shared state
         # - subscribing a component to the state
         # - mutating the state
         # - synchronizing with the backend
-      - tutorials/tictactoe.md
-      - tutorials/interacting-with-the-server.md
-        # - creating a server function
-        # - calling a server function
-      - tutorials/widgets.md
+      - tutorials/tictactoe.ipynb
+      - tutorials/interacting-with-the-server.ipynb
+      # - creating a server function
+      # - calling a server function
+      - tutorials/widgets.ipynb
+      - tutorials/from-notebook-to-app.ipynb
   # - Concepts:
   #     - Overview: concepts/index.md
   #     - concepts/running-in-python.md
@@ -81,6 +82,7 @@ extra_javascript:
 watch:
   - changelog.md
   - pret
+  - docs
 
 plugins:
   - auto_gen_pages:
@@ -89,6 +91,8 @@ plugins:
       exclude_glob: assets/fragments/*
       copy_files:
         changelog.md: changelog.md
+  - notebooks_to_md:
+      download_notebook_link: true
   - fix_fonts:
   - cards:
   - search:
