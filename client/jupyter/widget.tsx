@@ -50,6 +50,8 @@ export class PretViewWidget extends LuminoWidget {
   private readonly _mimeType: string;
   private _viewData: PretViewData;
   private _isRendered: boolean;
+  private _renderNode: HTMLElement;
+  private _fullpageNode: HTMLDivElement | null;
 
   constructor(
     options: { view_data?: PretViewData; mimeType: string },
@@ -63,6 +65,9 @@ export class PretViewWidget extends LuminoWidget {
     this._viewData = options.view_data;
     this.manager = manager;
     this.keepHiddenWhenExecuted = true;
+    this._isRendered = false;
+    this._renderNode = this.node;
+    this._fullpageNode = null;
 
     this.model = null;
 
@@ -110,9 +115,26 @@ export class PretViewWidget extends LuminoWidget {
 
   hideContent() {
     if (!this.isVisible && this._isRendered) {
-      ReactDOM.unmountComponentAtNode(this.node);
+      ReactDOM.unmountComponentAtNode(this._renderNode);
       this._isRendered = false;
     }
+    if (!this.isVisible && this._fullpageNode) {
+      this._fullpageNode.remove();
+      this._fullpageNode = null;
+      this._renderNode = this.node;
+    }
+  }
+
+  dispose() {
+    if (this._isRendered) {
+      ReactDOM.unmountComponentAtNode(this._renderNode);
+      this._isRendered = false;
+    }
+    if (this._fullpageNode) {
+      this._fullpageNode.remove();
+      this._fullpageNode = null;
+    }
+    super.dispose();
   }
 
   showContent() {
@@ -120,9 +142,64 @@ export class PretViewWidget extends LuminoWidget {
       return;
     }
 
+    const previousRenderNode = this._renderNode;
+    const searchParams = new URLSearchParams(window.location.search);
+    let fullpageCellParam = searchParams.get("pret-fullpage-cell");
+    if (fullpageCellParam === null) {
+      const navigationEntry = (window.performance
+        ?.getEntriesByType?.("navigation")?.[0] ??
+        null) as PerformanceNavigationTiming | null;
+      if (navigationEntry?.name) {
+        try {
+          const navigationUrl = new URL(navigationEntry.name, window.location.origin);
+          fullpageCellParam = navigationUrl.searchParams.get("pret-fullpage-cell");
+          if (fullpageCellParam !== null) {
+            searchParams.set("pret-fullpage-cell", fullpageCellParam);
+            const search = searchParams.toString();
+            window.history.replaceState(
+              window.history.state,
+              "",
+              `${window.location.pathname}${search ? `?${search}` : ""}${
+                window.location.hash
+              }`
+            );
+          }
+        } catch {
+          // Ignore malformed URL.
+        }
+      }
+    }
+    const fullpageCell = Number.parseInt(fullpageCellParam ?? "", 10);
+    let shouldUseFullpage = false;
+    if (Number.isFinite(fullpageCell)) {
+      const cellNode = this.node.closest(".jp-Cell") as HTMLElement | null;
+      const cellIndex = Number.parseInt(
+        cellNode?.dataset?.windowedListIndex ?? "",
+        10
+      );
+      if (cellNode && cellIndex === fullpageCell) {
+        if (!this._fullpageNode) {
+          this._fullpageNode = document.createElement("div");
+          this._fullpageNode.className = "pret-fullpage-host";
+          document.body.appendChild(this._fullpageNode);
+        }
+        shouldUseFullpage = true;
+      }
+    }
+
     if (this._isRendered) {
-      ReactDOM.unmountComponentAtNode(this.node);
+      ReactDOM.unmountComponentAtNode(previousRenderNode);
       this._isRendered = false;
+    }
+
+    if (shouldUseFullpage && this._fullpageNode) {
+      this._renderNode = this._fullpageNode;
+    } else {
+      this._renderNode = this.node;
+      if (this._fullpageNode) {
+        this._fullpageNode.remove();
+        this._fullpageNode = null;
+      }
     }
 
     const Render = () => {
@@ -169,7 +246,7 @@ export class PretViewWidget extends LuminoWidget {
           <Render />
         </Suspense>
       </ErrorBoundary>,
-      this.node
+      this._renderNode
     );
 
     this._isRendered = true;
