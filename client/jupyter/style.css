@@ -2,3 +2,13 @@
 .lm-Widget.lm-Panel.jp-OutputArea-child.jp-OutputArea-executeResult:has(.pret-view) {
     height: 100%;
 }
+
+.pret-fullpage-host {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    overflow: auto;
+    background: var(--jp-layout-color1);
+}

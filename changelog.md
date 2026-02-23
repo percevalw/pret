@@ -6,6 +6,7 @@
 - We now warn users when they call `create_store` with initial data and a file already exists at the specified path, to prevent accidental overwriting of existing data.
 - `create_store` now also accepts data as a callable that returns the initial data, to support lazy initialization of the store state.
 - Jupyter outputs now send only `marshaler_id`/`chunk_idx` and fetch bundles on demand. This should reduce the notebooks file size drastically for apps containing large amounts of data, and speed up the rendering of outputs.
+- New "Open in a new browser tab" command on Pret widgets in jupyter to create a new full-viewport view that overlays and hides jupyter simple presentation mode.
 
 ## v0.5.2 (2025-12-08)
 
