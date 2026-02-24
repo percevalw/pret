@@ -12,6 +12,7 @@ export type PretViewData = {
   marshaler_id: string;
   chunk_idx: number;
 };
+const PRET_READY_TIMEOUT_MS = 8000;
 
 /**
  * A renderer for pret Views with Jupyter (Lumino) framework
@@ -173,10 +174,19 @@ export class PretViewWidget extends LuminoWidget {
     let shouldUseFullpage = false;
     if (Number.isFinite(fullpageCell)) {
       const cellNode = this.node.closest(".jp-Cell") as HTMLElement | null;
-      const cellIndex = Number.parseInt(
+      let cellIndex = Number.parseInt(
         cellNode?.dataset?.windowedListIndex ?? "",
         10
       );
+      if (!Number.isFinite(cellIndex) && cellNode) {
+        // jlab3 does not set windowedListIndex on cell nodes
+        const notebookNode = cellNode.closest(".jp-Notebook");
+        if (notebookNode) {
+          cellIndex = Array.from(notebookNode.querySelectorAll(".jp-Cell")).indexOf(
+            cellNode
+          );
+        }
+      }
       if (cellNode && cellIndex === fullpageCell) {
         if (!this._fullpageNode) {
           this._fullpageNode = document.createElement("div");
@@ -204,7 +214,18 @@ export class PretViewWidget extends LuminoWidget {
 
     const Render = () => {
       if (!this.makeView) {
-        throw this.manager.ready.then(async () => {
+        throw Promise.race([
+          this.manager.ready,
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              const error: any = new Error(
+                "Timed out while connecting to the Jupyter backend."
+              );
+              error.code = "PRET_JUPYTER_DOWN";
+              reject(error);
+            }, PRET_READY_TIMEOUT_MS);
+          }),
+        ]).then(async () => {
           try {
             const unpackOnce = async () => {
               const viewData = await this.manager.resolveViewData(this.viewData);
@@ -233,7 +254,75 @@ export class PretViewWidget extends LuminoWidget {
             }
           } catch (e) {
             console.error(e);
-            this.makeView = () => <code>{e.toString()}</code>;
+            const message = String(e?.message ?? e);
+            const code = String((e as any)?.code ?? "");
+            const kernelDown =
+              code === "PRET_KERNEL_DOWN" ||
+              code === "PRET_STALE_MARSHALER" ||
+              code === "PRET_BUNDLE_TIMEOUT" ||
+              message.includes("not found in current session");
+            const jupyterDown = code === "PRET_JUPYTER_DOWN";
+            const useFullpageFallback =
+              this._fullpageNode !== null && this._renderNode === this._fullpageNode;
+            this.makeView = () => {
+              const [isRestarting, setIsRestarting] = React.useState(false);
+              const [restartError, setRestartError] = React.useState("");
+              return (
+                <div
+                  className={
+                    useFullpageFallback
+                      ? "pret-fullpage-fallback"
+                      : "pret-inline-fallback"
+                  }
+                >
+                  <h3 style={{ margin: 0 }}>
+                    {jupyterDown
+                      ? "Jupyter backend is unavailable"
+                      : kernelDown
+                        ? "Kernel is out of sync with this PRET widget"
+                        : "Failed to load PRET widget"}
+                  </h3>
+                  <p style={{ margin: 0 }}>
+                    {jupyterDown
+                      ? "Cannot load the PRET bundle because the Jupyter server connection is not available."
+                      : kernelDown
+                        ? "Restart the kernel and run all cells to rebuild the app state for this page."
+                        : "An unexpected error occurred while loading the PRET app."}
+                  </p>
+                  {!jupyterDown && kernelDown && (
+                    <button
+                      className="pret-restart-app-button"
+                      disabled={isRestarting}
+                      onClick={async () => {
+                        setRestartError("");
+                        setIsRestarting(true);
+                        try {
+                          const restart = (window as any).pretRestartAndRunAll;
+                          if (typeof restart !== "function") {
+                            throw new Error(
+                              "Restart command is not available in this Jupyter session."
+                            );
+                          }
+                          await restart();
+                          this.makeView = null;
+                          this.showContent();
+                        } catch (restartErr: any) {
+                          setRestartError(String(restartErr?.message ?? restartErr));
+                        } finally {
+                          setIsRestarting(false);
+                        }
+                      }}
+                    >
+                      {isRestarting ? "Restarting..." : "Restart the app"}
+                    </button>
+                  )}
+                  {!jupyterDown && !kernelDown && (
+                    <code>{message}</code>
+                  )}
+                  {restartError && <code>{restartError}</code>}
+                </div>
+              );
+            };
           }
         });
       }

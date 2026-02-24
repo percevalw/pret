@@ -20,6 +20,7 @@ import {
 import {
   INotebookTracker,
   Notebook,
+  NotebookActions,
   NotebookPanel,
 } from "@jupyterlab/notebook"; /* @ts-ignore */
 import { ISettingRegistry } from "@jupyterlab/settingregistry"; /* @ts-ignore */
@@ -512,6 +513,42 @@ async function activatePretExtension(
   if (menu) {
     menu.viewMenu.addGroup([{ command: "pret:open-page" }], 10);
   }
+  commands.addCommand("pret:restart-run-all", {
+    label: "Restart kernel and run all cells",
+    execute: async (args) => {
+      const path = args.path as string | undefined | null;
+      const current = path
+        ? ((docManager.findWidget(path, "Notebook") as any) as NotebookPanel | null)
+        : notebookTracker.currentWidget;
+      if (!current) {
+        throw new Error("No active notebook found.");
+      }
+      await current.sessionContext.ready;
+      if (current.sessionContext.session?.kernel) {
+        await current.sessionContext.restartKernel();
+      } else if (current.sessionContext.prevKernelName) {
+        await current.sessionContext.changeKernel({
+          name: current.sessionContext.prevKernelName,
+        });
+      } else {
+        await current.sessionContext.initialize();
+      }
+      const hasKernel = Boolean(current.sessionContext.session?.kernel);
+      if (!hasKernel) {
+        throw new Error("No kernel is available for this notebook.");
+      }
+      const didRun = await NotebookActions.runAll(
+        current.content,
+        current.sessionContext
+      );
+      if (!didRun) {
+        throw new Error("Failed to run notebook cells.");
+      }
+    },
+  });
+  // @ts-ignore
+  window.pretRestartAndRunAll = (path?: string) =>
+    commands.execute("pret:restart-run-all", path ? { path } : {});
 
   // CodeCell context menu groups
   contextMenu.addItem({
