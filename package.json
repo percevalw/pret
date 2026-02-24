@@ -47,7 +47,6 @@
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
     "old-galata": "npm:@jupyterlab/galata@4.5.8",
-    "patch-package": "^8.0.0",
     "prettier": "^2.8.8",
     "process": "^0.11.10",
     "react": "^17.0.2",

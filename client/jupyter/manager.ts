@@ -2,31 +2,31 @@ import "regenerator-runtime/runtime";
 import React from "react";
 
 // @ts-ignore
-import {DocumentRegistry} from "@jupyterlab/docregistry";
+import { DocumentRegistry } from "@jupyterlab/docregistry";
 // @ts-ignore
-import {IComm, IKernelConnection} from "@jupyterlab/services/lib/kernel/kernel";
+import { IComm, IKernelConnection } from "@jupyterlab/services/lib/kernel/kernel";
 // @ts-ignore
-import {IChangedArgs} from "@jupyterlab/coreutils";
+import { IChangedArgs } from "@jupyterlab/coreutils";
 // @ts-ignore
-import {Kernel} from "@jupyterlab/services";
+import { Kernel } from "@jupyterlab/services";
 // @ts-ignore
-import {ISessionContext} from "@jupyterlab/apputils/lib/sessioncontext";
+import { ISessionContext } from "@jupyterlab/apputils/lib/sessioncontext";
 // @ts-ignore
 import * as KernelMessage from "@jupyterlab/services/lib/kernel/messages";
 
-import useSyncExternalStoreExports from 'use-sync-external-store/shim'
+import useSyncExternalStoreExports from "use-sync-external-store/shim";
 
-import {PretSerialized, PretViewData} from "./widget";
+import { PretSerialized, PretViewData } from "./widget";
+import { makeLoadApp } from "../appLoader";
 
 type BundleResponse = {
     serialized: PretSerialized;
     maxChunkIdx: number;
 };
+const PRET_BUNDLE_REQUEST_TIMEOUT_MS = 10000;
 
 // @ts-ignore
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
-
-import { makeLoadApp } from "../appLoader";
 
 export default class PretJupyterHandler {
     get readyResolve(): any {
@@ -103,11 +103,30 @@ export default class PretJupyterHandler {
         this.settings = settings;
     }
 
-    sendMessage = (method: string, data: any) => {
-        this.comm.send({
-            'method': method,
-            'data': data
-        });
+    sendMessage = async (method: string, data: any) => {
+        if (!this.comm) {
+            const error: any = new Error("Jupyter communication channel is not available.");
+            error.code = "PRET_JUPYTER_DOWN";
+            throw error;
+        }
+        try {
+            return this.comm.send({
+              method: method,
+              data: data,
+            });
+        } catch (e: any) {
+            const message = String(e?.message ?? e);
+            const error: any = new Error(message);
+            const disconnected =
+                this.context?.sessionContext?.session?.kernel?.connectionStatus &&
+                this.context.sessionContext.session.kernel.connectionStatus !== "connected";
+            error.code = disconnected
+                ? "PRET_JUPYTER_DOWN"
+                : message.includes("Kernel")
+                  ? "PRET_KERNEL_DOWN"
+                  : "PRET_JUPYTER_DOWN";
+            throw error;
+        }
     }
 
     handleCommOpen = (comm: IComm, msg?: KernelMessage.ICommOpenMsg) => {
@@ -183,7 +202,11 @@ export default class PretJupyterHandler {
             if (pending) {
                 this.bundleRequests.delete(request_id);
                 if (error) {
-                    pending.reject(new Error(error));
+                    const typedError: any = new Error(error);
+                    typedError.code = error.includes("not found in current session")
+                        ? "PRET_STALE_MARSHALER"
+                        : "PRET_BUNDLE_ERROR";
+                    pending.reject(typedError);
                 } else if (!serialized) {
                     pending.reject(
                         new Error(
@@ -283,6 +306,21 @@ export default class PretJupyterHandler {
             rejectFn = reject;
         });
         this.bundleRequests.set(requestId, {resolve: resolveFn, reject: rejectFn});
+        const timeout = setTimeout(() => {
+            const pendingRequest = this.bundleRequests.get(requestId);
+            if (!pendingRequest) {
+                return;
+            }
+            this.bundleRequests.delete(requestId);
+            const error: any = new Error(
+                `Timed out while waiting for PRET bundle response for ${marshalerId}.`
+            );
+            const disconnected =
+                this.context?.sessionContext?.session?.kernel?.connectionStatus &&
+                this.context.sessionContext.session.kernel.connectionStatus !== "connected";
+            error.code = disconnected ? "PRET_JUPYTER_DOWN" : "PRET_BUNDLE_TIMEOUT";
+            pendingRequest.reject(error);
+        }, PRET_BUNDLE_REQUEST_TIMEOUT_MS);
 
         const inflight = pending
             .then((bundle) => {
@@ -290,11 +328,20 @@ export default class PretJupyterHandler {
                 return bundle;
             })
             .finally(() => {
+                clearTimeout(timeout);
                 this.bundleInFlight.delete(marshalerId);
             });
         this.bundleInFlight.set(marshalerId, inflight);
 
         await this.ready;
+        if (!this.context?.sessionContext.session?.kernel) {
+            this.bundleRequests.delete(requestId);
+            this.bundleInFlight.delete(marshalerId);
+            clearTimeout(timeout);
+            const error: any = new Error("No active kernel is available for this notebook.");
+            error.code = "PRET_KERNEL_DOWN";
+            throw error;
+        }
         try {
             this.sendMessage("bundle_request", {
                 marshaler_id: marshalerId,

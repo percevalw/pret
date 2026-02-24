@@ -12,3 +12,37 @@
     overflow: auto;
     background: var(--jp-layout-color1);
 }
+
+.pret-fullpage-fallback {
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.pret-inline-fallback {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.pret-restart-app-button {
+    padding: 8px 14px;
+    border: 1px solid var(--jp-border-color2);
+    border-radius: 6px;
+    background: var(--jp-layout-color2);
+    color: var(--jp-ui-font-color1);
+    cursor: pointer;
+}
+
+.pret-restart-app-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}

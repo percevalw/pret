@@ -7,6 +7,7 @@
 - `create_store` now also accepts data as a callable that returns the initial data, to support lazy initialization of the store state.
 - Jupyter outputs now send only `marshaler_id`/`chunk_idx` and fetch bundles on demand. This should reduce the notebooks file size drastically for apps containing large amounts of data, and speed up the rendering of outputs.
 - New "Open in a new browser tab" command on Pret widgets in jupyter to create a new full-viewport view that overlays and hides jupyter simple presentation mode.
+- New "Restart app" button when widget is detected as stale or kernel is down upon widget mounting
 - Rendering a pret widget now autosaves the notebook to limit the kernel-notebook desynchronization issues
 - All tutorials are now runnable notebooks, rendered identically as documentation pages
 - New `transact` function to group mutations as a single transaction.
