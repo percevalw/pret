@@ -1,5 +1,6 @@
 import * as Y from "yjs";
 import { useSyncExternalStore } from "react";
+import { Transaction } from "yjs";
 
 type JSONPrimitive = string | number | boolean | null;
 export type JSONValue = JSONPrimitive | JSONObject | JSONArray;
@@ -29,6 +30,19 @@ export function makeStore<T = any>(
   const cache = new WeakMap<object, NodeRec>();
 
   let jRoot: JSONValue = (initialJRoot ?? (yRoot as any).toJSON()) as JSONValue;
+
+  const cloneJSONValue = (value: any): JSONValue => {
+    const snap = value?.[JS] ?? value;
+    if (Array.isArray(snap)) {
+      return snap.map(cloneJSONValue) as JSONArray;
+    }
+    if (snap && typeof snap === "object") {
+      const out: JSONObject = {};
+      for (const [k, v] of Object.entries(snap)) out[k] = cloneJSONValue(v);
+      return out;
+    }
+    return snap as JSONPrimitive;
+  };
 
   function makeProxy(y: Y.AbstractType<any>, j?: JSONValue): any {
     const hit = cache.get(y as any);
@@ -60,22 +74,43 @@ export function makeStore<T = any>(
         if (y instanceof Y.Map) {
           const k = String(prop as any);
           const childY = y.get(k);
-          const childJ = rec.j[k];
-          if (childY instanceof Y.AbstractType)
+          const childJ = (rec.j as any)?.[k];
+          if (childY instanceof Y.AbstractType) {
+            if (childJ === undefined) return makeProxy(childY);
             return makeProxy(childY, childJ);
-          return childJ; // primitive
+          }
+          if (
+            rec.j &&
+            typeof rec.j === "object" &&
+            Object.prototype.hasOwnProperty.call(rec.j as any, k)
+          ) {
+            return childJ;
+          }
+          return asJSON(childY); // mirror may lag while inside manual transaction
         } else if (y instanceof Y.Array) {
           if (prop === "length") {
             return y.length;
           } else if (prop === "push") {
-            return (...items: any[]) =>
-              y.doc?.transact(() => y.push(items.map(jsToY)));
+            return (...items: any[]) => {
+              const mirrorItems = items.map(cloneJSONValue);
+              if (!Array.isArray(rec.j)) rec.j = [] as any;
+              (rec.j as any[]).push(...mirrorItems);
+              return y.doc?.transact(() => y.push(items.map(jsToY)));
+            };
           } else if (prop === "splice") {
-            return (start: number, del?: number, ...items: any[]) =>
-              y.doc?.transact(() => {
+            return (start: number, del?: number, ...items: any[]) => {
+              const mirrorItems = items.map(cloneJSONValue);
+              if (!Array.isArray(rec.j)) rec.j = [] as any;
+              if (del && del > 0) {
+                (rec.j as any[]).splice(start, del, ...mirrorItems);
+              } else if (mirrorItems.length) {
+                (rec.j as any[]).splice(start, 0, ...mirrorItems);
+              }
+              return y.doc?.transact(() => {
                 if (del && del > 0) y.delete(start, del);
                 if (items.length) y.insert(start, items.map(jsToY));
               });
+            };
           } else if (prop === Symbol.iterator) {
             return function* () {
               for (let i = 0; i < y.length; i++) {
@@ -98,7 +133,8 @@ export function makeStore<T = any>(
               : undefined;
             if (childY && (childY as any).toJSON)
               return makeProxy(childY, childJ);
-            return childJ;
+            if (Array.isArray(rec.j) && i < (rec.j as any[]).length) return childJ;
+            return asJSON(childY); // mirror may lag while inside manual transaction
           }
         } else if (y instanceof Y.Text) {
           if (prop === "toString") return () => String(rec.j);
@@ -112,12 +148,20 @@ export function makeStore<T = any>(
 
       set(_t, prop, value) {
         if (y instanceof Y.Map) {
-          y.set(String(prop), jsToY(value));
+          const k = String(prop);
+          y.set(k, jsToY(value));
+          if (rec.j && typeof rec.j === "object") {
+            (rec.j as any)[k] = cloneJSONValue(value);
+          }
           return true;
         }
         if (y instanceof Y.Array) {
           const i = Number(prop);
           if (!Number.isNaN(i)) {
+            if (!Array.isArray(rec.j)) rec.j = [] as any;
+            const arr = rec.j as any[];
+            while (arr.length <= i) arr.push(null);
+            arr[i] = cloneJSONValue(value);
             y.doc?.transact(() => {
               while (y.length <= i) y.push([null]);
               y.delete(i, 1);
@@ -127,6 +171,13 @@ export function makeStore<T = any>(
           } else if (prop === "length") {
             const len = Number(value);
             if (!Number.isNaN(len)) {
+              if (!Array.isArray(rec.j)) rec.j = [] as any;
+              const arr = rec.j as any[];
+              if (len < arr.length) {
+                arr.length = len;
+              } else {
+                while (arr.length < len) arr.push(null);
+              }
               if (len < y.length) {
                 y.delete(len, y.length - len);
               } else {
@@ -141,13 +192,20 @@ export function makeStore<T = any>(
 
       deleteProperty(_t, prop) {
         if (y instanceof Y.Map) {
-          y.delete(String(prop));
+          const k = String(prop);
+          y.delete(k);
+          if (rec.j && typeof rec.j === "object") {
+            delete (rec.j as any)[k];
+          }
           return true;
         }
         if (y instanceof Y.Array) {
           const i = Number(prop);
           if (!Number.isNaN(i)) {
             y.delete(i, 1);
+            if (Array.isArray(rec.j)) {
+              (rec.j as any[]).splice(i, 1);
+            }
           }
           return true;
         }
@@ -158,9 +216,9 @@ export function makeStore<T = any>(
         return true;
       },
       ownKeys() {
-        if (y instanceof Y.Map) return Object.keys(rec.j);
+        if (y instanceof Y.Map) return [...y.keys()];
         if (y instanceof Y.Array)
-          return ["length", ...(rec.j as any[]).map((_, i) => String(i))];
+          return ["length", ...new Array(y.length).fill(0).map((_, i) => String(i))];
         return [];
       },
       getOwnPropertyDescriptor(target, name) {
@@ -370,11 +428,81 @@ export function useSnapshot<T = any>(node: any): T {
   );
 }
 
+
 export const beginTransaction = (
   proxy: any,
   origin: any = null,
-)=> {
+  local: boolean = true
+): [Transaction, () => void] => {
   const rec: NodeRec | undefined = proxy?.[NODE];
-  if (!rec) throw new Error("beginTransaction expects a proxy created by makeStore.");
-  return rec.y.doc.beginTransaction(origin);
-}
+  if (!rec)
+    throw new Error("beginTransaction expects a proxy created by makeStore.");
+
+  type DocInternals = Y.Doc & {
+    _transaction: Y.Transaction | null;
+    _transactionCleanups: Y.Transaction[];
+    emit: (eventName: string, args: any[]) => void;
+  };
+
+  const doc = rec.y.doc as DocInternals | null;
+  if (!doc)
+    throw new Error("beginTransaction expects a proxy bound to an attached Y.Doc.");
+
+  // Nested manual begin inside an existing transaction does not create a new scope in Yjs.
+  if (doc._transaction !== null) {
+    return [doc._transaction, () => {}];
+  }
+
+  const tx = new Transaction(doc, origin, local);
+  const transactionCleanups = doc._transactionCleanups;
+
+  doc._transaction = tx;
+  transactionCleanups.push(tx);
+  if (transactionCleanups.length === 1) {
+    doc.emit("beforeAllTransactions", [doc]);
+  }
+  doc.emit("beforeTransaction", [tx, doc]);
+
+  let ended = false;
+  const endTransaction = () => {
+    if (ended) return;
+    ended = true;
+
+    if (doc._transaction !== tx) {
+      throw new Error("endTransaction called with a non-active transaction.");
+    }
+
+    // Force Yjs to run its internal cleanupTransactions(...) for our transaction.
+    // We do this calling Y.transact, then swapping its new transaction with our
+    // current, manually instantiated tx transaction, so that it cleans it up
+    // instead.
+    doc._transaction = null;
+    let preventBeforeTransactionEmission = true;
+    const originalEmit = doc.emit;
+    doc.emit = ((eventName: string, args: any[]) => {
+      if (eventName === "beforeTransaction" && preventBeforeTransactionEmission) {
+        preventBeforeTransactionEmission = false;
+        return;
+      }
+      return originalEmit.call(doc, eventName, args);
+    }) as DocInternals["emit"];
+
+    try {
+      Y.transact(
+        doc,
+        (internalTx: Y.Transaction) => {
+          const cleanups = doc._transactionCleanups;
+          if (cleanups[cleanups.length - 1] === internalTx) {
+            cleanups.pop();
+          }
+          doc._transaction = tx;
+        },
+        origin,
+        local
+      );
+    } finally {
+      doc.emit = originalEmit;
+    }
+  };
+  return [tx, endTransaction];
+};

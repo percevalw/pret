@@ -9,8 +9,7 @@
     "build:standalone:dev": "webpack --config webpack/webpack.config.js --mode development",
     "build:jupyter": "jupyter labextension build --development True .",
     "build:jupyter:dev": "jupyter labextension build --development True .",
-    "clean": "rm -rf pret/js-extension pret/js-base",
-    "postinstall": "patch-package"
+    "clean": "rm -rf pret/js-extension pret/js-base"
   },
   "peerDependencies": {
     "@jupyterlab/application": "",

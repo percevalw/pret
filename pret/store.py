@@ -430,5 +430,25 @@ return (function(store, origin) {
 )
 @contextmanager
 def transact(store: Union[AutoArray, AutoMap], origin: Any = None):
-    with store.doc.transaction(origin):
-        yield store
+    """
+    Group multiple store mutations into a single transaction.
+
+    Use this as a context manager to batch several writes so subscribers and
+    synchronization hooks are triggered once after the block completes.
+
+    Parameters
+    ----------
+    store : Union[AutoArray, AutoMap]
+        Store proxy (or nested container proxy) whose underlying document
+        transaction should be used.
+    origin : Any, optional
+        Metadata attached to the transaction and propagated to observers.
+        Defaults to ``None``.
+
+    Yields
+    -------
+    Any
+        The underlying transaction object for the active context.
+    """
+    with store.doc.transaction(origin) as tx:
+        yield tx
