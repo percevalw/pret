@@ -24,6 +24,8 @@
     /* To prevent a weird bug, likely related to overflow and flexbox, adding scrollbars to the div */
     padding: 1px;
     margin: -1px;
+    width: 100%;
+    justify-content: center;
 }
 
 .pret-code-snippet-view-content:has(.full-width, .metanno-table) {
