@@ -333,6 +333,50 @@ def use_store_snapshot(proxy_object):
 
 @marshal_as(
     js="""
+return function use_connection_status() {
+    const subscribe = (on_store_change) => {
+        const manager = get_manager();
+        if (!manager || typeof manager.subscribe_connection_status !== "function") {
+            return () => {};
+        }
+        return manager.subscribe_connection_status(on_store_change);
+    };
+
+    const get_snapshot = () => {
+        const manager = get_manager();
+        if (!manager || typeof manager.get_connection_status !== "function") {
+            return {
+                kind: "unknown",
+                transport: null,
+                connected: null,
+                reason: "manager_unavailable",
+                kernel_status: null,
+                kernel_connection_status: null,
+                last_error: null,
+            };
+        }
+        return manager.get_connection_status();
+    };
+
+    return window.React.useSyncExternalStore(subscribe, get_snapshot, get_snapshot);
+}
+""",
+    globals={"get_manager": get_manager},
+)
+def use_connection_status():
+    """
+    Subscribe to the current server/client connection status.
+
+    Returns
+    -------
+    dict
+        A reactive status object with fields such as ``connected``, ``reason``,
+        ``transport``, ``kernel_status`` and ``kernel_connection_status``.
+    """
+
+
+@marshal_as(
+    js="""
 return function use_event_callback(callback, dependencies) {
     const callbackRef = window.React.useRef(callback);
     callbackRef.current = callback;

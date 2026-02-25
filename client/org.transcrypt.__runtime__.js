@@ -194,6 +194,26 @@ export function __setproperty__ (anObject, name, descriptor) {
         Object.defineProperty (anObject, name, descriptor);
     }
 }
+__setproperty__ (object, 'toString', {
+    value: function () {
+        try {
+            if (this && this.__repr__ instanceof Function) {
+                return this.__repr__ ();
+            }
+        }
+        catch (exception) {}
+        try {
+            if (this && this.__str__ instanceof Function) {
+                return this.__str__ ();
+            }
+        }
+        catch (exception) {}
+        return Object.prototype.toString.call (this);
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true
+});
 export function assert (condition, message) {
     if (!condition) {
         throw AssertionError (message, new Error ());

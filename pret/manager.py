@@ -19,6 +19,7 @@ from pret.marshal import marshal_as
 
 CallableParams = ParamSpec("ServerCallableParams")
 CallableReturn = TypeVar("CallableReturn")
+UNSET = object()
 
 
 def make_remote_callable(function_id):
@@ -153,6 +154,36 @@ def make_uuid():
     return uuid.uuid4().hex
 
 
+@marshal_as(
+    js="""
+return function ensure_store_undo_manager(state) {
+    if (window.storeLib && typeof window.storeLib.ensureUndoManagerForDoc === "function") {
+        return window.storeLib.ensureUndoManagerForDoc(state);
+    }
+    return null;
+}
+""",
+    globals={},
+)
+def ensure_store_undo_manager(state):
+    return None
+
+
+@marshal_as(
+    js="""
+return function rollback_store_state(state) {
+    if (window.storeLib && typeof window.storeLib.undoDoc === "function") {
+        return window.storeLib.undoDoc(state);
+    }
+    return false;
+}
+""",
+    globals={},
+)
+def rollback_store_state(state):
+    return False
+
+
 class Manager:
     manager = None
 
@@ -166,6 +197,19 @@ class Manager:
         self.states_subscriptions: "WeakKeyDictionary[Any, Any]" = WeakKeyDictionary()
         self.call_futures = {}
         self.disabled_state_sync = set()
+        self.message_queue_enabled = False
+        self.outgoing_messages = []
+        self._is_draining_outgoing_messages = False
+        self.connection_state = {
+            "kind": "unknown",
+            "transport": None,
+            "connected": None,
+            "reason": None,
+            "kernel_status": None,
+            "kernel_connection_status": None,
+            "last_error": None,
+        }
+        self._connection_state_listeners = set()
         self.uid = make_uuid()
         self._current_origin = self.uid
         self.register_function(self.call_ref_method, "<ref_method>")
@@ -173,6 +217,64 @@ class Manager:
 
     def send_message(self, method, data):
         raise NotImplementedError()
+
+    def set_connection_status(
+        self,
+        connected=UNSET,
+        reason=UNSET,
+        transport=UNSET,
+        kernel_status=UNSET,
+        kernel_connection_status=UNSET,
+        last_error=UNSET,
+    ):
+        current_state = self.connection_state
+        new_state = dict(current_state)
+        has_changed = False
+
+        if connected is not UNSET and connected != current_state["connected"]:
+            new_state["connected"] = connected
+            has_changed = True
+        if reason is not UNSET and reason != current_state["reason"]:
+            new_state["reason"] = reason
+            has_changed = True
+        if transport is not UNSET and transport != current_state["transport"]:
+            new_state["transport"] = transport
+            has_changed = True
+        if kernel_status is not UNSET and kernel_status != current_state["kernel_status"]:
+            new_state["kernel_status"] = kernel_status
+            has_changed = True
+        if (
+            kernel_connection_status is not UNSET
+            and kernel_connection_status != current_state["kernel_connection_status"]
+        ):
+            new_state["kernel_connection_status"] = kernel_connection_status
+            has_changed = True
+        if last_error is not UNSET and last_error != current_state["last_error"]:
+            new_state["last_error"] = last_error
+            has_changed = True
+
+        if has_changed:
+            self.connection_state = new_state
+            self._notify_connection_status_listeners()
+        return self.connection_state
+
+    def get_connection_status(self):
+        return self.connection_state
+
+    def _notify_connection_status_listeners(self):
+        for callback in tuple(self._connection_state_listeners):
+            try:
+                callback()
+            except Exception:
+                pass
+
+    def subscribe_connection_status(self, callback):
+        self._connection_state_listeners.add(callback)
+
+        def unsubscribe():
+            self._connection_state_listeners.discard(callback)
+
+        return unsubscribe
 
     def register_ref(self, ref_id, ref):
         self.refs[ref_id] = ref
@@ -258,26 +360,139 @@ class Manager:
 
     def send_call(self, function_id, args, kwargs):
         callback_id = make_uuid()
-        message_future = self.send_message(
-            "call",
-            {
-                "function_id": function_id,
-                "args": args,
-                "kwargs": kwargs,
-                "callback_id": callback_id,
-            },
-        )
-        if is_awaitable(message_future):
-            start_async_task(message_future)
+        payload = {
+            "function_id": function_id,
+            "args": args,
+            "kwargs": kwargs,
+            "callback_id": callback_id,
+        }
         future = Future()
         self.register_call_future(callback_id, future)
+
+        def on_send_failure(error, message):
+            self._fail_call_future(callback_id, error)
+            self._handle_outgoing_send_failure(message.get("method"), message.get("data"), error)
+
+        self._send_outgoing_message("call", payload, on_failure=on_send_failure)
         return future
 
     def register_call_future(self, callback_id, future):
         self.call_futures[callback_id] = future
 
+    def _fail_call_future(self, callback_id, error):
+        future = self.call_futures.pop(callback_id, None)
+        if future is None:
+            return
+        if isinstance(error, Exception):
+            future.set_exception(error)
+        else:
+            future.set_exception(Exception(str(error)))
+
+    def _handle_outgoing_send_failure(self, method, data, error):
+        self.set_connection_status(
+            connected=False,
+            reason="send_failed",
+            last_error=str(error),
+        )
+
+    def _enqueue_outgoing_message(self, method, data, on_failure=None):
+        future = Future()
+        self.outgoing_messages.append(
+            {
+                "method": method,
+                "data": data,
+                "future": future,
+                "on_failure": on_failure,
+            }
+        )
+        self._ensure_outgoing_processor()
+        return future
+
+    def _send_outgoing_message(self, method, data, on_failure=None):
+        if self.message_queue_enabled:
+            return self._enqueue_outgoing_message(method, data, on_failure=on_failure)
+        future = Future()
+        message = {"method": method, "data": data}
+        try:
+            sent = self.send_message(method, data)
+        except Exception as error:
+            if on_failure is not None:
+                on_failure(error, message)
+            if isinstance(error, Exception):
+                future.set_exception(error)
+            else:
+                future.set_exception(Exception(str(error)))
+            return future
+
+        if is_awaitable(sent):
+
+            async def await_sent():
+                try:
+                    await sent
+                    future.set_result(None)
+                except Exception as error:
+                    if on_failure is not None:
+                        on_failure(error, message)
+                    if isinstance(error, Exception):
+                        future.set_exception(error)
+                    else:
+                        future.set_exception(Exception(str(error)))
+
+            start_async_task(await_sent())
+        else:
+            future.set_result(None)
+        return future
+
+    def _ensure_outgoing_processor(self):
+        if self._is_draining_outgoing_messages:
+            return
+        self._is_draining_outgoing_messages = True
+        task = self._drain_outgoing_messages()
+        if is_awaitable(task):
+            start_async_task(task)
+
+    async def _drain_outgoing_messages(self):
+        try:
+            while len(self.outgoing_messages):
+                queued = self.outgoing_messages.pop(0)
+                method = queued["method"]
+                data = queued["data"]
+                future = queued["future"]
+                on_failure = queued.get("on_failure")
+                message = {"method": method, "data": data}
+                try:
+                    sent = self.send_message(method, data)
+                    if is_awaitable(sent):
+                        await sent
+                    future.set_result(None)
+                except Exception as error:
+                    self._handle_outgoing_send_failure(method, data, error)
+                    try:
+                        if on_failure is not None:
+                            on_failure(error, message)
+                    finally:
+                        if isinstance(error, Exception):
+                            future.set_exception(error)
+                        else:
+                            future.set_exception(Exception(str(error)))
+        finally:
+            self._is_draining_outgoing_messages = False
+            if len(self.outgoing_messages):
+                self._ensure_outgoing_processor()
+
+    def _rollback_state(self, sync_id):
+        state = self.states.get(sync_id)
+        if state is None:
+            return False
+        self.disabled_state_sync.add(sync_id)
+        try:
+            return rollback_store_state(state)
+        finally:
+            self.disabled_state_sync.discard(sync_id)
+
     def register_state(self, sync_id, doc: Any):
         self.states[sync_id] = doc
+        ensure_store_undo_manager(doc)
         self.states_subscriptions[doc] = doc.on_update(
             lambda update: self.send_state_change(update, sync_id=sync_id)
         )
@@ -292,13 +507,21 @@ class Manager:
         self._current_origin = self.uid
 
     def send_state_change(self, update, sync_id):
-        self.send_message(
+        if sync_id in self.disabled_state_sync:
+            return None
+        payload = {
+            "update": b64_encode(update),
+            "sync_id": sync_id,
+            "origin": self._current_origin,
+        }
+
+        def on_send_failure(error, message):
+            self._rollback_state(sync_id)
+
+        return self._send_outgoing_message(
             "state_change",
-            {
-                "update": b64_encode(update),
-                "sync_id": sync_id,
-                "origin": self._current_origin,
-            },
+            payload,
+            on_failure=on_send_failure,
         )
 
     def register_function(self, fn, identifier=None) -> str:
@@ -344,15 +567,39 @@ class JupyterClientManager(Manager):
     def __init__(self):
         super().__init__()
         self.env_handler = None
+        self.message_queue_enabled = True
+        self.connection_state["kind"] = "jupyter_client"
+        self.connection_state["transport"] = "jupyter-comm"
+        self.connection_state["connected"] = False
+        self.connection_state["reason"] = "initializing"
 
     def register_environment_handler(self, handler):
         self.env_handler = handler
-        self.send_message("state_sync_request", {})
+        self._send_outgoing_message("state_sync_request", {})
 
-    def send_message(self, method, data):
+    async def send_message(self, method, data):
         if self.env_handler is None:
+            self.set_connection_status(
+                connected=False,
+                reason="missing_environment_handler",
+                last_error="No environment handler set",
+            )
             raise Exception("No environment handler set")
-        self.env_handler.sendMessage(method, data)
+        try:
+            await self.env_handler.sendMessage(method, data)
+            self.set_connection_status(
+                connected=True,
+                transport="jupyter-comm",
+                reason="send_ok",
+                last_error=None,
+            )
+        except BaseException as error:
+            self.set_connection_status(
+                connected=False,
+                reason="send_failed",
+                last_error=str(error),
+            )
+            raise Exception("Could not send message to Jupyter environment handler")
 
     async def handle_comm_message(self, msg):
         """Called when a message is received from the front-end"""
@@ -363,11 +610,13 @@ class JupyterClientManager(Manager):
         data = msg_content["data"]
 
         result = self.handle_message(method, data)
-        if result is not None:
+        if result:
             # check awaitable, and send back message if resolved is not None
             result = await result
-            if result is not None:
-                self.send_message(*result)
+            if result:
+                send_future = self._send_outgoing_message(*result)
+                if is_awaitable(send_future):
+                    await send_future
 
 
 @marshal_as(JupyterClientManager)
@@ -500,6 +749,11 @@ def make_websocket(protocol: str = "ws") -> Any:
 class StandaloneClientManager(Manager):
     def __init__(self):
         super().__init__()
+        self.message_queue_enabled = True
+        self.connection_state["kind"] = "standalone_client"
+        self.connection_state["transport"] = "standalone-http"
+        self.connection_state["connected"] = False
+        self.connection_state["reason"] = "initializing"
         self.websocket = make_websocket("/ws")
 
         def on_message(event):
@@ -508,24 +762,66 @@ class StandaloneClientManager(Manager):
             data = loads(data)
             self.handle_message(data["method"], data["data"])
 
+        def on_open(event):
+            self.set_connection_status(
+                connected=True,
+                transport="websocket",
+                reason="websocket_open",
+                last_error=None,
+            )
+            self._send_outgoing_message("state_sync_request", {})
+
+        def on_close(event):
+            self.set_connection_status(
+                connected=False,
+                transport="websocket",
+                reason="websocket_closed",
+            )
+
+        def on_error(event):
+            self.set_connection_status(
+                connected=False,
+                transport="websocket",
+                reason="websocket_error",
+            )
+
         # add a listener with cb to self.handle_message
         self.websocket.addEventListener("message", on_message)
-        self.websocket.addEventListener("open", lambda: self.send_message("state_sync_request", {}))
+        self.websocket.addEventListener("open", on_open)
+        self.websocket.addEventListener("close", on_close)
+        self.websocket.addEventListener("error", on_error)
 
     async def send_message(self, method, data):
-        response = await fetch(
-            "method",
-            {
-                "method": "POST",
-                "body": dumps({"method": method, "data": data}),
-                "headers": {"Content-Type": "application/json"},
-            },
-        )
-        result = await response.json()
-        if "method" in result and "data" in result:
-            future = self.handle_message(result["method"], result["data"])
-            if is_awaitable(future):
-                await future
+        try:
+            response = await fetch(
+                "method",
+                {
+                    "method": "POST",
+                    "body": dumps({"method": method, "data": data}),
+                    "headers": {"Content-Type": "application/json"},
+                },
+            )
+            if response.ok is False:
+                raise Exception(f"Failed to POST method call: {response.status}")
+            result = await response.json()
+            if "method" in result and "data" in result:
+                future = self.handle_message(result["method"], result["data"])
+                if is_awaitable(future):
+                    await future
+            self.set_connection_status(
+                connected=True,
+                transport="standalone-http",
+                reason="send_ok",
+                last_error=None,
+            )
+        except Exception as error:
+            self.set_connection_status(
+                connected=False,
+                transport="standalone-http",
+                reason="send_failed",
+                last_error=str(error),
+            )
+            raise
 
 
 @marshal_as(StandaloneClientManager)
