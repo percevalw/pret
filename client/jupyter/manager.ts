@@ -23,6 +23,16 @@ type BundleResponse = {
     serialized: PretSerialized;
     maxChunkIdx: number;
 };
+
+type PretConnectionState = {
+    connected: boolean | null;
+    reason: string | null;
+    transport: string | null;
+    kernelStatus: string | null;
+    kernelConnectionStatus: string | null;
+    lastError: string | null;
+};
+
 const PRET_BUNDLE_REQUEST_TIMEOUT_MS = 10000;
 
 // @ts-ignore
@@ -58,6 +68,7 @@ export default class PretJupyterHandler {
     public ready: Promise<any>;
     private _readyResolve: (value?: any) => void;
     private _readyReject: (reason?: any) => void;
+    private connectionState: PretConnectionState;
 
     constructor(context: DocumentRegistry.IContext<DocumentRegistry.IModel>, settings: { saveState: boolean }) {
 
@@ -70,6 +81,14 @@ export default class PretJupyterHandler {
         this.bundleCache = new Map();
         this.bundleInFlight = new Map();
         this.bundleRequestSeq = 0;
+        this.connectionState = {
+            connected: false,
+            reason: "initializing",
+            transport: "jupyter-comm",
+            kernelStatus: null,
+            kernelConnectionStatus: null,
+            lastError: null,
+        };
         this.ready = new Promise((resolve, reject) => {
             this._readyResolve = resolve;
             this._readyReject = reject;
@@ -99,21 +118,66 @@ export default class PretJupyterHandler {
         }
 
         this.connectToAnyKernel().then();
+        this.propagateConnectionState({
+            kernelConnectionStatus: this.getKernelConnectionStatus(),
+        });
 
         this.settings = settings;
     }
+
+    private getKernelConnectionStatus = (): string | null => {
+        return this.context?.sessionContext?.session?.kernel?.connectionStatus ?? null;
+    };
+
+    private propagateConnectionState = (patch: Partial<PretConnectionState>) => {
+        this.connectionState = {
+            ...this.connectionState,
+            ...patch,
+        };
+        const manager = this.appManager as any;
+        if (!manager || typeof manager.set_connection_status !== "function") {
+            return;
+        }
+        try {
+            manager.set_connection_status(
+                this.connectionState.connected,
+                this.connectionState.reason,
+                this.connectionState.transport,
+                this.connectionState.kernelStatus,
+                this.connectionState.kernelConnectionStatus,
+                this.connectionState.lastError,
+            );
+        } catch (error) {
+            console.warn("Failed to propagate PRET connection state", error);
+        }
+    };
 
     sendMessage = async (method: string, data: any) => {
         if (!this.comm) {
             const error: any = new Error("Jupyter communication channel is not available.");
             error.code = "PRET_JUPYTER_DOWN";
+            this.propagateConnectionState({
+                connected: false,
+                reason: "comm_missing",
+                transport: "jupyter-comm",
+                kernelConnectionStatus: this.getKernelConnectionStatus(),
+                lastError: String(error.message ?? error),
+            });
             throw error;
         }
         try {
-            return this.comm.send({
+            const result = this.comm.send({
               method: method,
               data: data,
             });
+            this.propagateConnectionState({
+                connected: true,
+                reason: "send_ok",
+                transport: "jupyter-comm",
+                kernelConnectionStatus: this.getKernelConnectionStatus(),
+                lastError: null,
+            });
+            return result;
         } catch (e: any) {
             const message = String(e?.message ?? e);
             const error: any = new Error(message);
@@ -125,6 +189,13 @@ export default class PretJupyterHandler {
                 : message.includes("Kernel")
                   ? "PRET_KERNEL_DOWN"
                   : "PRET_JUPYTER_DOWN";
+            this.propagateConnectionState({
+                connected: false,
+                reason: error.code,
+                transport: "jupyter-comm",
+                kernelConnectionStatus: this.getKernelConnectionStatus(),
+                lastError: message,
+            });
             throw error;
         }
     }
@@ -133,6 +204,13 @@ export default class PretJupyterHandler {
         console.info("Comm is open", comm.commId)
         this.comm = comm;
         this.comm.onMsg = this.handleCommMessage;
+        this.propagateConnectionState({
+            connected: true,
+            reason: "comm_open",
+            transport: "jupyter-comm",
+            kernelConnectionStatus: this.getKernelConnectionStatus(),
+            lastError: null,
+        });
         this._readyResolve();
     };
 
@@ -155,6 +233,11 @@ export default class PretJupyterHandler {
     connectToAnyKernel = async () => {
         if (!this.context?.sessionContext) {
             console.warn("No session context")
+            this.propagateConnectionState({
+                connected: false,
+                reason: "missing_session_context",
+                kernelConnectionStatus: null,
+            });
             return;
         }
         console.info("Awaiting session to be ready")
@@ -162,6 +245,11 @@ export default class PretJupyterHandler {
 
         if (this.context?.sessionContext.session.kernel.handleComms === false) {
             console.warn("Comms are disabled")
+            this.propagateConnectionState({
+                connected: false,
+                reason: "comms_disabled",
+                kernelConnectionStatus: this.getKernelConnectionStatus(),
+            });
             return;
         }
         const allCommIds = await this.getCommInfo();
@@ -250,14 +338,37 @@ export default class PretJupyterHandler {
         if (oldValue) {
             this.comm = null;
             oldValue.removeCommTarget(this.commTargetName, this.handleCommOpen);
+            this.propagateConnectionState({
+                connected: false,
+                reason: "kernel_changed",
+                kernelConnectionStatus: oldValue.connectionStatus ?? null,
+            });
         }
 
         if (newValue) {
             newValue.registerCommTarget(this.commTargetName, this.handleCommOpen);
+            this.propagateConnectionState({
+                reason: "kernel_available",
+                kernelConnectionStatus: newValue.connectionStatus ?? null,
+                connected:
+                    this.comm !== null &&
+                    (newValue.connectionStatus ?? "connected") === "connected",
+            });
         }
     };
 
     handleKernelStatusChange = (status: Kernel.Status) => {
+        const disconnectedStatuses = new Set(["autorestarting", "restarting", "dead"]);
+        const kernelConnectionStatus = this.getKernelConnectionStatus();
+        this.propagateConnectionState({
+            kernelStatus: status,
+            kernelConnectionStatus,
+            reason: `kernel_status_${status}`,
+            connected:
+                !disconnectedStatuses.has(status) &&
+                this.comm !== null &&
+                (kernelConnectionStatus === null || kernelConnectionStatus === "connected"),
+        });
         switch (status) {
             case 'autorestarting':
             case 'restarting':
@@ -279,6 +390,9 @@ export default class PretJupyterHandler {
         const [renderable, manager] = this.unpack(serialized, marshaler_id, chunk_idx)
         this.appManager = manager;
         this.appManager.register_environment_handler(this);
+        this.propagateConnectionState({
+            kernelConnectionStatus: this.getKernelConnectionStatus(),
+        });
         return renderable;
     }
 

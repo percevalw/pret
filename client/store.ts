@@ -36,6 +36,67 @@ export type Store<T = any> = any;
 const asJSON = (v: any) =>
   v && typeof v.toJSON === "function" ? v.toJSON() : v;
 
+const undoManagersByDoc = new WeakMap<Y.Doc, Y.UndoManager>();
+
+const getUndoScope = (doc: Y.Doc): Y.AbstractType<any>[] => {
+  const scope: Y.AbstractType<any>[] = [];
+  const share = (doc as any).share;
+  if (share && typeof share.forEach === "function") {
+    share.forEach((value: any) => {
+      if (value instanceof Y.AbstractType) {
+        scope.push(value);
+      }
+    });
+  }
+  if (!scope.length) {
+    scope.push(doc.getMap("_"));
+  }
+  return scope;
+};
+
+const getDocFromProxy = (proxy: any): Y.Doc => {
+  const rec: NodeRec | undefined = proxy?.[NODE];
+  if (!rec) {
+    throw new Error("Expected a proxy created by makeStore.");
+  }
+  const doc = rec.y.doc;
+  if (!doc) {
+    throw new Error("Expected a proxy bound to an attached Y.Doc.");
+  }
+  return doc;
+};
+
+export function ensureUndoManagerForDoc(doc: Y.Doc): Y.UndoManager {
+  let manager = undoManagersByDoc.get(doc);
+  if (!manager) {
+    manager = new Y.UndoManager(getUndoScope(doc), { captureTimeout: 0 });
+    undoManagersByDoc.set(doc, manager);
+  }
+  return manager;
+}
+
+export function ensureUndoManager(proxy: any): Y.UndoManager {
+  return ensureUndoManagerForDoc(getDocFromProxy(proxy));
+}
+
+export function undoDoc(doc: Y.Doc): boolean {
+  const manager = ensureUndoManagerForDoc(doc);
+  if (!manager.canUndo()) {
+    return false;
+  }
+  manager.undo();
+  return true;
+}
+
+export function redoDoc(doc: Y.Doc): boolean {
+  const manager = ensureUndoManagerForDoc(doc);
+  if (!manager.canRedo()) {
+    return false;
+  }
+  manager.redo();
+  return true;
+}
+
 export function makeStore<T = any>(
   yRoot: Y.Map<any> | Y.Array<any>,
   initialJRoot?: JSONValue
