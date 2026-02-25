@@ -328,7 +328,12 @@ class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
         if not encoder:
             raise cbor2_encoder.CBOREncodeTypeError(f"cannot serialize type {obj_type.__name__}")
 
-        encoder(self, obj)
+        try:
+            encoder(self, obj)
+        except BaseException as e:
+            if isinstance(obj, cbor2_encoder.CBORTag):
+                raise Exception("Could not encode {}".format(repr(obj.value))) from e
+            raise
 
 
 class PretMarshaler:
@@ -363,7 +368,7 @@ class PretMarshaler:
             except Exception:
                 import traceback
 
-                output = f"Error when transpiling {tmpfile}:\n" + traceback.format_exc()
+                output = StringIO(f"Error when transpiling {tmpfile}:\n" + traceback.format_exc())
             if "Saving" not in output.getvalue() or "Error" in output.getvalue():
                 raise Exception(
                     "Could not export your Python app to Javascript with Transcrypt. "
@@ -498,7 +503,11 @@ class PretMarshaler:
         return self.get_serialized(), chunk_idx
 
     def _encoder(self, encoder, value):
-        source_code_id = f"pret_factory_{self.id}_{len(self.source_codes)}"
+        if hasattr(value, "__name__"):
+            name_part = "_" + value.__name__.replace("<", "_").replace(">", "_")
+        else:
+            name_part = ""
+        source_code_id = f"pret_factory_{self.id}{name_part}_{len(self.source_codes)}"
         try:
             if value in marshal_overrides:
                 marshalable = marshal_overrides[value]
