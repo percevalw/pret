@@ -52,4 +52,11 @@ Here are step-by-step guides to get you started.
     ---
     Publish a widget as a standalone app or open it in a dedicated Jupyter tab.
 
+=== card {: href=/tutorials/connection-status/ }
+
+    :fontawesome-solid-signal:
+    **Connection status**
+
+    ---
+    Learn how to monitor the connection status of your app and react to connection issues.
 <!-- --8<-- [end:tutorials] -->
