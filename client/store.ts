@@ -16,7 +16,20 @@ const JS = Symbol("js");
 const YJS = Symbol("yjs");
 const NODE = Symbol("node");
 
-type NodeRec = { y: Y.AbstractType<any>; j: JSONValue; proxy: any };
+type StoreState = {
+  beginDraft(tx: Y.Transaction): void;
+  finalizeDraft(tx: Y.Transaction): void;
+  readCommitted(path: Path): JSONValue;
+  readVisible(path: Path): JSONValue;
+};
+
+type NodeRec = {
+  y: Y.AbstractType<any>;
+  j: JSONValue;
+  path: Path;
+  proxy: any;
+  state: StoreState;
+};
 
 export type Store<T = any> = any;
 
@@ -30,6 +43,10 @@ export function makeStore<T = any>(
   const cache = new WeakMap<object, NodeRec>();
 
   let jRoot: JSONValue = (initialJRoot ?? (yRoot as any).toJSON()) as JSONValue;
+  let draftTx: Y.Transaction | null = null;
+  let draftRoot: JSONValue | null = null;
+  let draftDetached = new WeakSet<object>();
+  const suppressedMirrorTransactions = new WeakSet<Y.Transaction>();
 
   const cloneJSONValue = (value: any): JSONValue => {
     const snap = value?.[JS] ?? value;
@@ -44,83 +61,202 @@ export function makeStore<T = any>(
     return snap as JSONPrimitive;
   };
 
-  function makeProxy(y: Y.AbstractType<any>, j?: JSONValue): any {
+  const isContainer = (value: any): value is JSONObject | JSONArray =>
+    Array.isArray(value) || (!!value && typeof value === "object");
+
+  const shallowCloneContainer = (
+    value: any,
+    nextPathPart?: string | number
+  ): JSONObject | JSONArray => {
+    if (Array.isArray(value)) return value.slice();
+    if (value && typeof value === "object") return { ...value };
+    return typeof nextPathPart === "number" ? [] : {};
+  };
+
+  const readAtPath = (root: any, path: Path): any => {
+    let current = root;
+    for (const part of path) {
+      if (current == null) return undefined;
+      current = current[part as any];
+    }
+    return current;
+  };
+
+  const readCommitted = (path: Path): JSONValue => readAtPath(jRoot, path) as JSONValue;
+
+  const readVisible = (path: Path): JSONValue => {
+    const root = draftTx ? (draftRoot ?? jRoot) : jRoot;
+    return readAtPath(root, path) as JSONValue;
+  };
+
+  const ensureWritableDraftContainer = (path: Path): any => {
+    if (!draftTx) return null;
+
+    if (draftRoot === null) {
+      draftRoot = jRoot;
+      draftDetached = new WeakSet<object>();
+    }
+
+    if (!isContainer(draftRoot) || !draftDetached.has(draftRoot as object)) {
+      draftRoot = shallowCloneContainer(draftRoot, path[0]) as JSONValue;
+      if (isContainer(draftRoot)) draftDetached.add(draftRoot as object);
+    }
+
+    let current: any = draftRoot;
+    for (let i = 0; i < path.length; i++) {
+      const part = path[i];
+      const nextPart = path[i + 1];
+      let child = current?.[part as any];
+
+      if (!isContainer(child)) {
+        child = shallowCloneContainer(child, nextPart);
+        current[part as any] = child;
+        if (isContainer(child)) draftDetached.add(child as object);
+      } else if (!draftDetached.has(child as object)) {
+        const clonedChild = shallowCloneContainer(child, nextPart);
+        current[part as any] = clonedChild;
+        child = clonedChild;
+        draftDetached.add(child as object);
+      }
+
+      current = child;
+    }
+
+    return current;
+  };
+
+  const patchDraft = (rec: NodeRec, mutator: (container: any) => void) => {
+    if (!draftTx) return;
+    const container = ensureWritableDraftContainer(rec.path);
+    if (!isContainer(container)) return;
+    mutator(container);
+  };
+
+  const refreshArrayChildPaths = (arrayY: Y.Array<any>, basePath: Path) => {
+    for (let i = 0; i < arrayY.length; i++) {
+      const childY = arrayY.get(i);
+      if (childY instanceof Y.AbstractType) {
+        const childRec = cache.get(childY as any);
+        if (childRec) childRec.path = [...basePath, i];
+      }
+    }
+  };
+
+  const refreshMapChildPaths = (mapY: Y.Map<any>, basePath: Path) => {
+    for (const [k, childY] of mapY.entries()) {
+      if (childY instanceof Y.AbstractType) {
+        const childRec = cache.get(childY as any);
+        if (childRec) childRec.path = [...basePath, k];
+      }
+    }
+  };
+
+  const state: StoreState = {
+    beginDraft(tx: Y.Transaction) {
+      draftTx = tx;
+      draftRoot = jRoot;
+      draftDetached = new WeakSet<object>();
+      suppressedMirrorTransactions.add(tx);
+    },
+    finalizeDraft(tx: Y.Transaction) {
+      try {
+        if (draftTx === tx && draftRoot !== null) {
+          jRoot = draftRoot;
+          const rootRec = cache.get(yRoot as any);
+          if (rootRec) rootRec.j = jRoot;
+        }
+      } finally {
+        if (draftTx === tx) {
+          draftTx = null;
+          draftRoot = null;
+          draftDetached = new WeakSet<object>();
+        }
+        suppressedMirrorTransactions.delete(tx);
+      }
+    },
+    readCommitted,
+    readVisible,
+  };
+
+  function makeProxy(y: Y.AbstractType<any>, j?: JSONValue, path: Path = []): any {
     const hit = cache.get(y as any);
     if (hit) {
       if (j !== undefined && hit.j !== j) hit.j = j;
+      hit.path = path;
       return hit.proxy;
     }
 
     const rec: NodeRec = {
       y,
       j: (j ?? (y as any).toJSON?.() ?? y) as JSONValue,
+      path,
       proxy: null as any,
+      state,
     };
 
-    const isArray = Array.isArray(j);
+    const isArray = Array.isArray(j ?? rec.j);
 
     const proxy = new Proxy(isArray ? [] : {}, {
       get(_t, prop) {
         if (prop === NODE) return rec;
         if (prop === YJS) return y;
-        if (prop === JS) return rec.j;
+        if (prop === JS) return readVisible(rec.path);
+
+        const currentJ = readVisible(rec.path) as any;
 
         if (prop === Symbol.toStringTag) {
-          if (y instanceof Y.Array || Array.isArray(rec.j)) return "Array";
-          if (y instanceof Y.Text || typeof rec.j === "string") return "String";
+          if (y instanceof Y.Array || Array.isArray(currentJ)) return "Array";
+          if (y instanceof Y.Text || typeof currentJ === "string") return "String";
           return "Object";
         }
 
         if (y instanceof Y.Map) {
+          if (typeof prop !== "string" && typeof prop !== "number") {
+            return Reflect.get(currentJ as any, prop, proxy) as any;
+          }
           const k = String(prop as any);
           const childY = y.get(k);
-          const childJ = (rec.j as any)?.[k];
+          const childJ = currentJ?.[k];
           if (childY instanceof Y.AbstractType) {
-            if (childJ === undefined) return makeProxy(childY);
-            return makeProxy(childY, childJ);
+            return makeProxy(childY, childJ, [...rec.path, k]);
           }
-          if (
-            rec.j &&
-            typeof rec.j === "object" &&
-            Object.prototype.hasOwnProperty.call(rec.j as any, k)
-          ) {
-            return childJ;
-          }
-          return asJSON(childY); // mirror may lag while inside manual transaction
+          return childJ;
         } else if (y instanceof Y.Array) {
           if (prop === "length") {
-            return y.length;
+            return Array.isArray(currentJ) ? currentJ.length : y.length;
           } else if (prop === "push") {
             return (...items: any[]) => {
-              const mirrorItems = items.map(cloneJSONValue);
-              if (!Array.isArray(rec.j)) rec.j = [] as any;
-              (rec.j as any[]).push(...mirrorItems);
-              return y.doc?.transact(() => y.push(items.map(jsToY)));
+              const result = y.doc?.transact(() => y.push(items.map(jsToY)));
+              patchDraft(rec, (container) => {
+                if (!Array.isArray(container)) return;
+                container.push(...items.map(cloneJSONValue));
+              });
+              refreshArrayChildPaths(y, rec.path);
+              return result;
             };
           } else if (prop === "splice") {
             return (start: number, del?: number, ...items: any[]) => {
-              const mirrorItems = items.map(cloneJSONValue);
-              if (!Array.isArray(rec.j)) rec.j = [] as any;
-              if (del && del > 0) {
-                (rec.j as any[]).splice(start, del, ...mirrorItems);
-              } else if (mirrorItems.length) {
-                (rec.j as any[]).splice(start, 0, ...mirrorItems);
-              }
-              return y.doc?.transact(() => {
+              const result = y.doc?.transact(() => {
                 if (del && del > 0) y.delete(start, del);
                 if (items.length) y.insert(start, items.map(jsToY));
               });
+              patchDraft(rec, (container) => {
+                if (!Array.isArray(container)) return;
+                const mapped = items.map(cloneJSONValue);
+                if (del && del > 0) {
+                  container.splice(start, del, ...mapped);
+                } else if (mapped.length) {
+                  container.splice(start, 0, ...mapped);
+                }
+              });
+              refreshArrayChildPaths(y, rec.path);
+              return result;
             };
           } else if (prop === Symbol.iterator) {
             return function* () {
-              for (let i = 0; i < y.length; i++) {
-                const childY = y.get(i);
-                const childJ = rec.j[i];
-                if (childY && (childY as any).toJSON) {
-                  yield makeProxy(childY, childJ);
-                } else {
-                  yield childJ;
-                }
+              const len = (proxy as any).length;
+              for (let i = 0; i < len; i++) {
+                yield (proxy as any)[i];
               }
             };
           }
@@ -128,61 +264,64 @@ export function makeStore<T = any>(
           const i = Number(prop);
           if (!Number.isNaN(i)) {
             const childY = y.get(i);
-            const childJ = Array.isArray(rec.j)
-              ? (rec.j as any[])[i]
-              : undefined;
+            const childJ = Array.isArray(currentJ) ? currentJ[i] : undefined;
             if (childY && (childY as any).toJSON)
-              return makeProxy(childY, childJ);
-            if (Array.isArray(rec.j) && i < (rec.j as any[]).length) return childJ;
-            return asJSON(childY); // mirror may lag while inside manual transaction
+              return makeProxy(childY, childJ, [...rec.path, i]);
+            return childJ;
           }
         } else if (y instanceof Y.Text) {
-          if (prop === "toString") return () => String(rec.j);
+          if (prop === "toString") return () => String(currentJ);
           if (prop === Symbol.toStringTag) return "String";
-          if (prop === "length") return String(rec.j ?? "").length;
-          return (rec.j as any)?.[prop as any];
+          if (prop === "length") return String(currentJ ?? "").length;
+          return (currentJ as any)?.[prop as any];
         }
 
-        return Reflect.get(rec.j as any, prop, proxy) as any;
+        return Reflect.get(currentJ as any, prop, proxy) as any;
       },
 
       set(_t, prop, value) {
         if (y instanceof Y.Map) {
           const k = String(prop);
           y.set(k, jsToY(value));
-          if (rec.j && typeof rec.j === "object") {
-            (rec.j as any)[k] = cloneJSONValue(value);
-          }
+          patchDraft(rec, (container) => {
+            if (Array.isArray(container) || !container) return;
+            (container as any)[k] = cloneJSONValue(value);
+          });
+          refreshMapChildPaths(y, rec.path);
           return true;
         }
         if (y instanceof Y.Array) {
           const i = Number(prop);
           if (!Number.isNaN(i)) {
-            if (!Array.isArray(rec.j)) rec.j = [] as any;
-            const arr = rec.j as any[];
-            while (arr.length <= i) arr.push(null);
-            arr[i] = cloneJSONValue(value);
             y.doc?.transact(() => {
               while (y.length <= i) y.push([null]);
               y.delete(i, 1);
               y.insert(i, [jsToY(value)]);
             });
+            patchDraft(rec, (container) => {
+              if (!Array.isArray(container)) return;
+              while (container.length <= i) container.push(null);
+              container[i] = cloneJSONValue(value);
+            });
+            refreshArrayChildPaths(y, rec.path);
             return true;
           } else if (prop === "length") {
             const len = Number(value);
             if (!Number.isNaN(len)) {
-              if (!Array.isArray(rec.j)) rec.j = [] as any;
-              const arr = rec.j as any[];
-              if (len < arr.length) {
-                arr.length = len;
-              } else {
-                while (arr.length < len) arr.push(null);
-              }
               if (len < y.length) {
                 y.delete(len, y.length - len);
               } else {
                 y.insert(y.length, new Array(len - y.length).fill(null));
               }
+              patchDraft(rec, (container) => {
+                if (!Array.isArray(container)) return;
+                if (len < container.length) {
+                  container.length = len;
+                } else {
+                  while (container.length < len) container.push(null);
+                }
+              });
+              refreshArrayChildPaths(y, rec.path);
               return true;
             }
           }
@@ -194,18 +333,22 @@ export function makeStore<T = any>(
         if (y instanceof Y.Map) {
           const k = String(prop);
           y.delete(k);
-          if (rec.j && typeof rec.j === "object") {
-            delete (rec.j as any)[k];
-          }
+          patchDraft(rec, (container) => {
+            if (Array.isArray(container) || !container) return;
+            delete (container as any)[k];
+          });
+          refreshMapChildPaths(y, rec.path);
           return true;
         }
         if (y instanceof Y.Array) {
           const i = Number(prop);
           if (!Number.isNaN(i)) {
             y.delete(i, 1);
-            if (Array.isArray(rec.j)) {
-              (rec.j as any[]).splice(i, 1);
-            }
+            patchDraft(rec, (container) => {
+              if (!Array.isArray(container)) return;
+              container.splice(i, 1);
+            });
+            refreshArrayChildPaths(y, rec.path);
           }
           return true;
         }
@@ -216,9 +359,13 @@ export function makeStore<T = any>(
         return true;
       },
       ownKeys() {
-        if (y instanceof Y.Map) return [...y.keys()];
-        if (y instanceof Y.Array)
-          return ["length", ...new Array(y.length).fill(0).map((_, i) => String(i))];
+        const currentJ = readVisible(rec.path) as any;
+        if (y instanceof Y.Map && currentJ && typeof currentJ === "object") {
+          return Object.keys(currentJ);
+        }
+        if (y instanceof Y.Array && Array.isArray(currentJ)) {
+          return ["length", ...currentJ.map((_: any, i: number) => String(i))];
+        }
         return [];
       },
       getOwnPropertyDescriptor(target, name) {
@@ -249,7 +396,8 @@ export function makeStore<T = any>(
   }
 
   // Deep observer that clones along changed paths and rewires proxies in-place.
-  (yRoot as any).observeDeep((events: Array<Y.YEvent<any>>) => {
+  (yRoot as any).observeDeep((events: Array<Y.YEvent<any>>, transaction: Y.Transaction) => {
+    if (suppressedMirrorTransactions.has(transaction)) return;
     if (!events.length) return;
 
     // Sort by path (lexicographic) to maximize LCP reuse
@@ -265,6 +413,7 @@ export function makeStore<T = any>(
 
       let currentJ: JSONValue = jRoot;
       let currentY = yRoot;
+      let currentPath: Path = [];
 
       const maybeCloneCurrentAndRewire_ = () => {
         if (cloned.has(currentY)) return currentJ;
@@ -281,6 +430,7 @@ export function makeStore<T = any>(
             );
           }
           rec.j = currentJ; // rewire to new JSON value
+          rec.path = currentPath;
         }
         return currentJ;
       };
@@ -298,6 +448,7 @@ export function makeStore<T = any>(
           currentY = currentY.get(i);
           currentJ = Array.isArray(currentJ) ? currentJ[i] : undefined;
         }
+        currentPath = [...currentPath, prop as any];
         maybeCloneCurrentAndRewire_();
         parentJ[prop] = currentJ;
       }
@@ -318,6 +469,7 @@ export function makeStore<T = any>(
             }
           }
         });
+        refreshMapChildPaths(ev.target as Y.Map<any>, path);
       }
       // Handle Y.Array events
       else if (ev.target instanceof Y.Array) {
@@ -362,6 +514,7 @@ export function makeStore<T = any>(
             continue;
           }
         }
+        refreshArrayChildPaths(ev.target as Y.Array<any>, path);
       }
     }
   });
@@ -380,7 +533,7 @@ export function makeStore<T = any>(
     return value;
   }
 
-  const rootProxy = makeProxy(yRoot, jRoot);
+  const rootProxy = makeProxy(yRoot, jRoot, []);
 
   return rootProxy as Store<T>;
 }
@@ -424,7 +577,7 @@ export function useSnapshot<T = any>(node: any): T {
       (rec.y as any).observeDeep(handler);
       return () => (rec.y as any).unobserveDeep(handler);
     },
-    () => rec.j as T
+    () => rec.state.readCommitted(rec.path) as T
   );
 }
 
@@ -462,6 +615,7 @@ export const beginTransaction = (
     doc.emit("beforeAllTransactions", [doc]);
   }
   doc.emit("beforeTransaction", [tx, doc]);
+  rec.state.beginDraft(tx);
 
   let ended = false;
   const endTransaction = () => {
@@ -502,6 +656,7 @@ export const beginTransaction = (
       );
     } finally {
       doc.emit = originalEmit;
+      rec.state.finalizeDraft(tx);
     }
   };
   return [tx, endTransaction];
