@@ -814,14 +814,14 @@ class StandaloneClientManager(Manager):
                 reason="send_ok",
                 last_error=None,
             )
-        except Exception as error:
+        except BaseException as error:
             self.set_connection_status(
                 connected=False,
                 transport="standalone-http",
                 reason="send_failed",
                 last_error=str(error),
             )
-            raise
+            raise Exception("Could not communicate with server")
 
 
 @marshal_as(StandaloneClientManager)
