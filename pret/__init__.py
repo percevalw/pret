@@ -20,7 +20,7 @@ from .hooks import (
 )
 from .manager import server_only
 
-__version__ = "0.5.2"
+__version__ = "0.6.0"
 
 __all__ = [
     "component",
@@ -36,4 +36,5 @@ __all__ = [
     "use_store_snapshot",
     "use_body_style",
     "use_event_callback",
+    "use_connection_status",
 ]

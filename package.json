@@ -1,7 +1,7 @@
 {
   "name": "pret",
   "main": "client/index.tsx",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "scripts": {
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
     "build:dev": "jlpm clean && jlpm build:standalone:dev && jlpm build:jupyter:dev",
