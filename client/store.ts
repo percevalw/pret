@@ -607,22 +607,12 @@ export function snapshot(proxy: any): JSONValue {
 export function subscribe(
   proxy: any,
   cb: (arg0: Y.YEvent<any>[], arg1: Y.Transaction) => void,
-  notifyInSync: boolean
 ): () => void {
   const rec: NodeRec | undefined = proxy?.[NODE];
   if (!rec) throw new Error("subscribe expects a proxy created by makeStore.");
   const y = rec.y as Y.AbstractType<any>;
-  if (notifyInSync) {
-    y.observeDeep(cb);
-  } else {
-    // TODO: maybe queue the events and call the callback with all events at once?
-    y.observeDeep((events: Y.YEvent<any>[], transaction: Y.Transaction) => {
-      queueMicrotask(() => cb(events, transaction));
-    });
-  }
-  return () => {
-    y.unobserveDeep(cb);
-  };
+  y.observeDeep(cb);
+  return () => y.unobserveDeep(cb);
 }
 
 export function useSnapshot<T = any>(node: any): T {

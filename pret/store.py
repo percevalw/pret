@@ -368,7 +368,7 @@ def snapshot(value):
 
 @marshal_as(
     js="""
-return (function(store, callback, notify_in_sync) {
+return (function(store, callback) {
     if (arguments.length > 0) {
         var kwargs = arguments[arguments.length - 1]
         if (kwargs && kwargs.hasOwnProperty("__kwargtrans__")) {
@@ -376,21 +376,20 @@ return (function(store, callback, notify_in_sync) {
             for (var attr in kwargs) {
                 switch (attr) {
                     case 'store': var store = kwargs [attr]; break;
-                    case 'notify_in_sync': var notify_in_sync = kwargs [attr]; break;
                 }
             }
         }
     }
     if (callback === undefined) {
         return (callback) => {
-            return window.storeLib.subscribe(store, callback, notify_in_sync);
+            return window.storeLib.subscribe(store, callback);
         }
     }
-    return window.storeLib.subscribe(store, callback, notify_in_sync);
+    return window.storeLib.subscribe(store, callback);
 })
 """
 )
-def subscribe(store, callback=None, notify_in_sync=False):
+def subscribe(store, callback=None):
     """
     Subscribe to changes in a store.
 
@@ -400,9 +399,6 @@ def subscribe(store, callback=None, notify_in_sync=False):
         The store to subscribe to.
     callback : callable, optional
         The function to call when the object changes.
-    notify_in_sync : bool, optional
-        If True, the callback will be called in sync with the change.
-        Only relevant in the browser environment.
 
     Returns
     -------
