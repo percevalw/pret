@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 (2026-02-26)
 
 - Added a new `load_store_snapshot` function to load a Python snapshot of the store state without subscribing to updates or risking mutations. This can be useful for instance in Metanno to load the annotations in a read-only pure Python format for export or processing purposes.
 - We now warn users when they call `create_store` with initial data and a file already exists at the specified path, to prevent accidental overwriting of existing data.
