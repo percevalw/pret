@@ -155,14 +155,10 @@ export class PretViewWidget extends LuminoWidget {
           const navigationUrl = new URL(navigationEntry.name, window.location.origin);
           fullpageCellParam = navigationUrl.searchParams.get("pret-fullpage-cell");
           if (fullpageCellParam !== null) {
-            searchParams.set("pret-fullpage-cell", fullpageCellParam);
-            const search = searchParams.toString();
             window.history.replaceState(
               window.history.state,
               "",
-              `${window.location.pathname}${search ? `?${search}` : ""}${
-                window.location.hash
-              }`
+              navigationUrl
             );
           }
         } catch {
