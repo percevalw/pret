@@ -307,6 +307,10 @@ class Manager:
             return self.handle_call_failure_msg(data)
         elif method == "state_sync_request":
             return self.handle_state_sync_request_msg(data.get("sync_id"))
+        elif method == "is_alive_request":
+            return self.handle_is_alive_request(data)
+        elif method == "is_alive_response":
+            return None
         elif method == "bundle_request":
             return self.handle_bundle_request(data)
         elif method == "bundle_response":
@@ -358,6 +362,15 @@ class Manager:
             if sync_id is None or sid == sync_id:
                 self.send_state_change(state.get_update(), sid)
 
+    def handle_is_alive_request(self, data):
+        return (
+            "is_alive_response",
+            {
+                "request_id": data.get("request_id"),
+                "ok": True,
+            },
+        )
+
     def send_call(self, function_id, args, kwargs):
         callback_id = make_uuid()
         payload = {
@@ -389,10 +402,12 @@ class Manager:
             future.set_exception(Exception(str(error)))
 
     def _handle_outgoing_send_failure(self, method, data, error):
+        message = str(error)
+        reason = "send_timeout" if "PRET_COMM_TIMEOUT" in message else "send_failed"
         self.set_connection_status(
             connected=False,
-            reason="send_failed",
-            last_error=str(error),
+            reason=reason,
+            last_error=message,
         )
 
     def _enqueue_outgoing_message(self, method, data, on_failure=None):
@@ -491,7 +506,7 @@ class Manager:
             self.disabled_state_sync.discard(sync_id)
 
     def register_state(self, sync_id, doc: Any):
-        self.states[sync_id] = doc
+        self.states.__setitem__(sync_id, doc)
         ensure_store_undo_manager(doc)
         self.states_subscriptions[doc] = doc.on_update(
             lambda update: self.send_state_change(update, sync_id=sync_id)
@@ -501,7 +516,7 @@ class Manager:
         if data["origin"] == self.uid:
             return None
         update = b64_decode(data["update"])
-        state = self.states[data["sync_id"]]
+        state = self.states.get(data["sync_id"])
         self._current_origin = data["origin"]
         state.apply_update(update)
         self._current_origin = self.uid
@@ -585,21 +600,19 @@ class JupyterClientManager(Manager):
                 last_error="No environment handler set",
             )
             raise Exception("No environment handler set")
+        if not self.connection_state["connected"]:
+            raise Exception("Not connected")
         try:
             await self.env_handler.sendMessage(method, data)
-            self.set_connection_status(
-                connected=True,
-                transport="jupyter-comm",
-                reason="send_ok",
-                last_error=None,
-            )
         except BaseException as error:
+            message = str(error)
+            reason = "send_timeout" if "PRET_COMM_TIMEOUT" in message else "send_failed"
             self.set_connection_status(
                 connected=False,
-                reason="send_failed",
-                last_error=str(error),
+                reason=reason,
+                last_error=message,
             )
-            raise Exception("Could not send message to Jupyter environment handler")
+            raise Exception(message)
 
     async def handle_comm_message(self, msg):
         """Called when a message is received from the front-end"""
@@ -608,6 +621,12 @@ class JupyterClientManager(Manager):
             return None
         method = msg_content["method"]
         data = msg_content["data"]
+        self.set_connection_status(
+            connected=True,
+            transport="jupyter-comm",
+            reason="message_received",
+            last_error=None,
+        )
 
         result = self.handle_message(method, data)
         if result:
