@@ -10,51 +10,10 @@ permissions:
 
 jobs:
   test:
-    name: 'Pre-release tests'
-    runs-on: ubuntu-22.04
-    steps:
-      - name: 'Checkout'
-        uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
-
-      - name: 'Set up Node'
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20.x"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: 'Install uv'
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          activate-environment: true
-          cache-dependency-glob: |
-            pyproject.toml
-            uv.lock
-
-      - name: 'Install project (PyPI deps)'
-        run: |
-          yarn install
-          uv pip install -e . --group dev
-          uv pip install metanno
-
-      - name: 'Install Playwright Browsers'
-        run: yarn playwright install --with-deps
-
-      - name: 'Run tests for JupyterLab 4'
-        run: |
-          uv pip install pip "jupyterlab>=4"
-          sh tests/jupyter/run.sh
-
-      - name: 'Run tests for JupyterLab 3'
-        run: |
-          uv pip install pip "jupyterlab<4"
-          sh tests/jupyter/run.sh
+    uses: ./.github/workflows/tests.yml
+    with:
+      run_non_test_jobs: false
+    secrets: inherit
 
   build:
     runs-on: ubuntu-latest

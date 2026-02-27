@@ -4,6 +4,13 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_call:
+    inputs:
+      run_non_test_jobs:
+        description: "Run jobs other than the main test matrix"
+        required: false
+        type: boolean
+        default: false
 
 env:
   BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
@@ -43,14 +50,22 @@ jobs:
 
     steps:
       - name: 'Compute git fetch depth'
+        if: github.event_name == 'pull_request'
         run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1 ))" >> "${GITHUB_ENV}"
 
       # To support coverage diffing
       - name: 'Checkout PR branch and all PR commits'
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: ${{ env.PR_FETCH_DEPTH }}
+          submodules: 'recursive'
+
+      - name: 'Checkout'
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
           submodules: 'recursive'
 
       - name: 'Set up Node'
@@ -83,6 +98,9 @@ jobs:
             uv pip install -e . --group dev
           fi
 
+      - name: 'Run pytest'
+        run: pytest
+
       - name: 'Install Playwright Browsers'
         run: yarn playwright install --with-deps
 
@@ -110,6 +128,7 @@ jobs:
 
   test-build:
     name: 'Test build wheel'
+    if: ${{ github.event_name != 'workflow_call' || inputs.run_non_test_jobs }}
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout'
@@ -138,7 +157,7 @@ jobs:
     name: 'Generate combined report'
     needs: test
     runs-on: ubuntu-22.04
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && (github.event_name != 'workflow_call' || inputs.run_non_test_jobs) }}
     steps:
       - name: 'Checkout'
         uses: actions/checkout@v4

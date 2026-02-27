@@ -63,7 +63,7 @@ dev = [
     "transcrypt",
 ]
 docs = [
-    "mkdocs-eds @ git+https://github.com/percevalw/mkdocs-eds.git@main#egg=mkdocs-eds",
+    "mkdocs-eds @ git+https://github.com/percevalw/mkdocs-eds.git@main; python_version >= '3.9'",
     "pret-joy",
     "metanno",
     "pandas",
