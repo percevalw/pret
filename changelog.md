@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Improved connection status detection in Jupyter
+
 ## v0.6.0 (2026-02-26)
 
 - Added a new `load_store_snapshot` function to load a Python snapshot of the store state without subscribing to updates or risking mutations. This can be useful for instance in Metanno to load the annotations in a read-only pure Python format for export or processing purposes.
