@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.6.1 (2026-02-27)
 
 - Improved connection status detection in Jupyter
 - In Jupyter, when using "Open in a new tab" command, we now better preserver the original URL (as Jupyter rewrites it for various reasons)
