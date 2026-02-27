@@ -53,7 +53,6 @@ store = create_store(
         "faire à manger": True,
         "faire la vaisselle": False,
     },
-    sync=True,
 )
 
 
