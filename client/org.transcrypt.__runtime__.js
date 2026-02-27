@@ -2015,7 +2015,7 @@ export var __sort__ = function (iterable, key, reverse) {
 		}));
 	}
 	else {
-		iterable.sort ();
+		iterable.sort ((a, b) => (a > b ? 1 : -(1)));
 	}
 	if (reverse) {
 		iterable.reverse ();
