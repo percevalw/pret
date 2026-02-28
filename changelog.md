@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.2 (2026-02-28)
+
+- Fix remote function call from the backend
+
 ## v0.6.1 (2026-02-27)
 
 - Improved connection status detection in Jupyter
