@@ -191,8 +191,8 @@ class Manager:
         # Could we simplify this by having one dict: sync_id -> (state, unsubscribe) ?
         # This would require making a custom WeakValueDictionary that can watch
         # the content of the value tuples
-        self.functions = WeakValueDictionary()
-        self.refs = WeakValueDictionary()
+        self.functions = {}
+        self.refs = {}
         self.states: "WeakValueDictionary[str, Any]" = WeakValueDictionary()
         self.states_subscriptions: "WeakKeyDictionary[Any, Any]" = WeakKeyDictionary()
         self.call_futures = {}
@@ -329,7 +329,7 @@ class Manager:
             data["callback_id"],
         )
         try:
-            fn = self.functions[function_id]
+            fn = self.functions.get(function_id)
             # check coroutine or sync function
             result = fn(*args, **kwargs)
             result = (await result) if is_awaitable(result) else result
@@ -542,7 +542,7 @@ class Manager:
     def register_function(self, fn, identifier=None) -> str:
         if identifier is None:
             identifier = function_identifier(fn)
-        self.functions[identifier] = fn
+        self.functions.__setitem__(identifier, fn)  # small hack bc weakdict is tricky atm
         return identifier
 
 
