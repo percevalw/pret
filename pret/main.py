@@ -11,7 +11,7 @@ import tempfile
 from collections import defaultdict
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import ContextManager, Dict, List, Optional, Tuple, Union
 
 from pret.marshal import get_shared_marshaler
 from pret.serve import make_app
@@ -30,11 +30,17 @@ class BundleMode(str, Enum):
 @contextlib.contextmanager
 def build(
     renderables,
-    static_dir: Union[str, Path] = None,
-    build_dir: Union[str, Path] = None,
+    static_dir: Optional[Union[str, Path]] = None,
+    build_dir: Optional[Union[str, Path]] = None,
     mode: Union[bool, str, BundleMode] = True,
     dev: bool = False,
-) -> Tuple[Dict[str, Union[str, Path]], List[Tuple[str, str]], str]:
+) -> ContextManager[
+    Tuple[
+        Dict[str, Union[str, Path]],
+        List[Tuple[str, str]],
+        str,
+    ]
+]:
     """
     Build the Pret app, pooling all the assets and entry points from
     the packages that were accessed for rendering.
@@ -132,7 +138,7 @@ def build(
             "*": static_dir,
         }
 
-    entries: List[Tuple[str, Optional[str]]] = []
+    entries: List[Tuple[str, str]] = []
     if mode == BundleMode.FEDERATED:
         extension_static_mapping, entries = extract_prebuilt_extension_assets(packages)
         base_static_mapping, index_html = extract_prebuilt_base_assets()
@@ -206,9 +212,9 @@ def extract_js_dependencies(
         js_module_path_parts = ref.name.split(".")
         packages.append(ref.module)
 
-        imports[
-            ".".join((ref.module._js_package_name, *js_module_path_parts[:-1]))
-        ].append((js_module_path_parts[-1], f"i_{ref_idx}"))
+        imports[".".join((ref.module._js_package_name, *js_module_path_parts[:-1]))].append(
+            (js_module_path_parts[-1], f"i_{ref_idx}")
+        )
 
         current = exported
         for part in (ref.__module__[3:], *js_module_path_parts[:-1]):
@@ -261,13 +267,9 @@ def extract_prebuilt_extension_assets(
         except StopIteration:
             # otherwise, it's a regular install
             js_package = package._js_package_name
-            static_dir = (
-                Path(sys.prefix) / f"share/jupyter/labextensions/{js_package}/static"
-            )
+            static_dir = Path(sys.prefix) / f"share/jupyter/labextensions/{js_package}/static"
             entry = next(static_dir.glob("remoteEntry.*.js"))
-        remote_name = json.loads((static_dir.parent / "package.json").read_text())[
-            "name"
-        ]
+        remote_name = json.loads((static_dir.parent / "package.json").read_text())["name"]
         mapping[entry.name] = entry
         entries.append((entry.name, remote_name))
 
