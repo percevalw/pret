@@ -6,7 +6,7 @@ when called from Python.
 """
 
 import functools
-from typing import Callable, TypeVar
+from typing import Callable, Optional, TypeVar
 
 from pret.manager import get_manager
 from pret.marshal import get_shared_marshaler, marshal_as
@@ -69,7 +69,53 @@ return function py_to_react() {
     return make
 
 
-def make_create_element_from_function(fn):
+FN_STUB_PY_TO_REACT_SRC = """
+return function py_to_react() {
+	if (
+        arguments.length > 0
+        && arguments[arguments.length - 1]
+        && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
+	) {
+        var children = Array.prototype.slice.call(arguments, 0, -1);
+        var props = arguments[arguments.length - 1];
+    } else {
+        var children = Array.prototype.slice.call(arguments, 0, -1);
+        var props = {};
+    }
+    delete props.__kwargtrans__;
+    return window.React.createElement(
+        react_to_py,
+        props,
+        ...(Array.isArray(children) ? children : [children])
+    );
+}
+"""
+
+FN_STUB_PY_TO_REACT_MEMO_SRC = """
+const memo_fn = window.React.memo(react_to_py);
+return function py_to_react() {
+	if (
+        arguments.length > 0
+        && arguments[arguments.length - 1]
+        && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
+	) {
+        var children = Array.prototype.slice.call(arguments, 0, -1);
+        var props = arguments[arguments.length - 1];
+    } else {
+        var children = Array.prototype.slice.call(arguments, 0, -1);
+        var props = {};
+    }
+    delete props.__kwargtrans__;
+    return window.React.createElement(
+        memo_fn,
+        props,
+        ...(Array.isArray(children) ? children : [children])
+    );
+}
+"""
+
+
+def make_create_element_from_function(fn, memo=False):
     """
     Turn a Python Pret function into function that creates a React element.
 
@@ -100,28 +146,7 @@ return function react_to_py(props) {
     def react_to_py(props, ctx=None): ...
 
     @marshal_as(
-        js="""
-// py_to_react for @component
-return function py_to_react() {
-	if (
-        arguments.length > 0
-        && arguments[arguments.length - 1]
-        && arguments[arguments.length - 1].hasOwnProperty("__kwargtrans__")
-	) {
-        var children = Array.prototype.slice.call(arguments, 0, -1);
-        var props = arguments[arguments.length - 1];
-    } else {
-        var children = Array.prototype.slice.call(arguments, 0, -1);
-        var props = {};
-    }
-    delete props.__kwargtrans__;
-    return window.React.createElement(
-        react_to_py,
-        props,
-        ...(Array.isArray(children) ? children : [children])
-    );
-}
-""",
+        js=FN_STUB_PY_TO_REACT_MEMO_SRC if memo else FN_STUB_PY_TO_REACT_SRC,
         globals={"react_to_py": react_to_py},
     )
     def py_to_react(*children, **props): ...
@@ -129,15 +154,18 @@ return function py_to_react() {
     return py_to_react
 
 
-def component(fn: Callable):
+def component(fn: Optional[Callable] = None, memo=False):
     """
     Decorator to turn a Python function into a Pret component, that
     will be rendered by React.
 
     Parameters
     ----------
-    fn: Callable
+    fn: Optional[Callable]
     """
+    if fn is None:
+        return lambda decorated_fn: component(decorated_fn, memo=memo)
+
     # When decorating a rendering function
     #
     # @component
@@ -149,7 +177,7 @@ def component(fn: Callable):
     # Renderable object, it is called in the browser. In this case, it's
     # not the "wrapped" function that is called, but the transformed
     # "create_fn" function
-    create_fn = make_create_element_from_function(fn)
+    create_fn = make_create_element_from_function(fn, memo=memo)
 
     @functools.wraps(fn)
     @marshal_as(create_fn)
