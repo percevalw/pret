@@ -576,6 +576,9 @@ export function py_next (iterator, default_val) {               // Called only i
     catch (exception) {                     // JavaScript iterators are the exception here
         var result = iterator.next ();
         if (result.done) {
+            if (arguments.length == 2) {
+                return default_val;
+            }
             throw StopIteration (new Error ());
         }
         else {
