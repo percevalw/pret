@@ -211,6 +211,18 @@ export default class PretJupyterHandler {
         }
     };
 
+    private requestAppStateSync = (trigger: string) => {
+        const manager = this.appManager as any;
+        if (!manager || typeof manager.request_state_sync !== "function") {
+            return;
+        }
+        try {
+            void manager.request_state_sync();
+        } catch (error) {
+            console.warn(`PRET: Failed to request state sync after ${trigger}`, error);
+        }
+    };
+
     private withTimeout = async <T>(
         operation: Promise<T>,
         timeoutMs: number,
@@ -313,6 +325,7 @@ export default class PretJupyterHandler {
     };
 
     private markBackendMessageReceived = (method?: string) => {
+        const wasConnected = this.connectionState.connected === true;
         this.clearIsAliveResponseTimeout();
         this.isAliveRequestInFlightId = null;
         this.propagateConnectionState({
@@ -322,6 +335,9 @@ export default class PretJupyterHandler {
             kernelConnectionStatus: this.getKernelConnectionStatus(),
             lastError: null,
         });
+        if (!wasConnected && method !== "state_sync_response") {
+            this.requestAppStateSync(method ?? "message_received");
+        }
     };
 
     private sendIsAliveRequest = async (trigger: string) => {
@@ -620,6 +636,9 @@ export default class PretJupyterHandler {
         this.propagateConnectionState({
             kernelConnectionStatus: this.getKernelConnectionStatus(),
         });
+        if (this.connectionState.connected === true) {
+            this.requestAppStateSync("app_manager_ready");
+        }
         this.scheduleIsAliveCheck("app_manager_ready");
         return renderable;
     }

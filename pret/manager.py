@@ -308,7 +308,9 @@ class Manager:
         elif method == "call_failure":
             return self.handle_call_failure_msg(data)
         elif method == "state_sync_request":
-            return self.handle_state_sync_request_msg(data.get("sync_id"))
+            return self.handle_state_sync_request_msg(data)
+        elif method == "state_sync_response":
+            return self.handle_state_sync_response_msg(data)
         elif method == "is_alive_request":
             return self.handle_is_alive_request(data)
         elif method == "is_alive_response":
@@ -359,10 +361,75 @@ class Manager:
             return None
         future.set_exception(Exception(message))
 
-    def handle_state_sync_request_msg(self, sync_id=None):
+    def build_state_sync_request(self, sync_id=None):
+        state_vectors = {}
         for sid, state in self.states.items():
             if sync_id is None or sid == sync_id:
-                self.send_state_change(state.get_update(), sid)
+                state_vectors[sid] = b64_encode(state.get_state())
+        payload = {
+            "request_id": make_uuid(),
+            "state_vectors": state_vectors,
+            "origin": self.uid,
+        }
+        if sync_id is not None:
+            payload["sync_id"] = sync_id
+        return payload
+
+    def request_state_sync(self, sync_id=None):
+        return self._send_outgoing_message(
+            "state_sync_request",
+            self.build_state_sync_request(sync_id),
+        )
+
+    def handle_state_sync_request_msg(self, data=None):
+        sync_id = data.get("sync_id") if data else None
+        state_vectors = data.get("state_vectors", {}) if data else {}
+        updates = {}
+        response_state_vectors = {}
+        for sid, state in self.states.items():
+            if sync_id is None or sid == sync_id:
+                state_vector = state_vectors.get(sid)
+                update = (
+                    state.get_update(b64_decode(state_vector))
+                    if state_vector
+                    else state.get_update()
+                )
+                if len(update):
+                    updates[sid] = b64_encode(update)
+                response_state_vectors[sid] = b64_encode(state.get_state())
+        payload = {
+            "request_id": data.get("request_id") if data else None,
+            "updates": updates,
+            "state_vectors": response_state_vectors,
+            "origin": self.uid,
+        }
+        if sync_id is not None:
+            payload["sync_id"] = sync_id
+        return "state_sync_response", payload
+
+    def handle_state_sync_response_msg(self, data=None):
+        sync_id = data.get("sync_id") if data else None
+        updates = data.get("updates", {}) if data else {}
+        state_vectors = data.get("state_vectors", {}) if data else {}
+        origin = data.get("origin") if data else None
+
+        for sid, update_b64 in updates.items():
+            if sync_id is not None and sid != sync_id:
+                continue
+            state = self.states.get(sid)
+            if state is None:
+                continue
+            self._apply_state_update(state, b64_decode(update_b64), origin)
+
+        for sid, state_vector in state_vectors.items():
+            if sync_id is not None and sid != sync_id:
+                continue
+            state = self.states.get(sid)
+            if state is None:
+                continue
+            update = state.get_update(b64_decode(state_vector))
+            if len(update):
+                self.send_state_change(update, sid)
 
     def handle_is_alive_request(self, data):
         return (
@@ -514,14 +581,22 @@ class Manager:
             lambda update: self.send_state_change(update, sync_id=sync_id)
         )
 
+    def _apply_state_update(self, state, update, origin):
+        previous_origin = self._current_origin
+        self._current_origin = origin if origin is not None else previous_origin
+        try:
+            state.apply_update(update)
+        finally:
+            self._current_origin = previous_origin
+
     def handle_state_change_msg(self, data):
         if data["origin"] == self.uid:
             return None
         update = b64_decode(data["update"])
         state = self.states.get(data["sync_id"])
-        self._current_origin = data["origin"]
-        state.apply_update(update)
-        self._current_origin = self.uid
+        if state is None:
+            return None
+        self._apply_state_update(state, update, data["origin"])
 
     def send_state_change(self, update, sync_id):
         if sync_id in self.disabled_state_sync:
@@ -592,7 +667,6 @@ class JupyterClientManager(Manager):
 
     def register_environment_handler(self, handler):
         self.env_handler = handler
-        self._send_outgoing_message("state_sync_request", {})
 
     async def send_message(self, method, data):
         if self.env_handler is None:
@@ -802,7 +876,7 @@ class StandaloneClientManager(Manager):
                 reason="websocket_open",
                 last_error=None,
             )
-            self._send_outgoing_message("state_sync_request", {})
+            self.request_state_sync()
 
         def on_close(event):
             self.set_connection_status(
