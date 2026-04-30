@@ -55,7 +55,10 @@ module.exports = (env) => ({
                         files: assets,
                         options: options,
                     },
-                    __PRET_PICKLE_FILE__: process.env.PRET_PICKLE_FILE || '__PRET_PICKLE_FILE__',
+                    __PRET_BUNDLE_BYTES_FILE__:
+                        process.env.PRET_BUNDLE_BYTES_FILE || '__PRET_BUNDLE_BYTES_FILE__',
+                    __PRET_BUNDLE_CODE_FILE__:
+                        process.env.PRET_BUNDLE_CODE_FILE || '__PRET_BUNDLE_CODE_FILE__',
                 };
             },
         }),

@@ -5,7 +5,6 @@ environment.
 """
 
 import ast
-import base64
 import collections
 import contextlib
 import functools
@@ -24,7 +23,7 @@ from asyncio import Future
 from io import BytesIO, StringIO
 from pathlib import Path
 from types import FunctionType
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from weakref import WeakKeyDictionary
 
 import astunparse
@@ -346,6 +345,7 @@ class PretMarshaler:
         self.chunk_idx = 0
         self._file = BytesIO()
         self._cbor_encoder = StrictCBOREncoder(self._file, default=self.encoder, value_sharing=True)
+        self._serialized_bytes_cache: Optional[Tuple[bytes, str]] = None
 
     def transpile(self):
         py_module_string = (
@@ -459,9 +459,10 @@ class PretMarshaler:
         chunk_idx = self.chunk_idx
         self.visit(obj)
         self.chunk_idx += 1
+        self._serialized_bytes_cache = None
         return chunk_idx
 
-    def _build_bundle(self, blob: bytes):
+    def _build_bundle(self, blob: bytes) -> Tuple[bytes, str]:
         header = (
             "if(window.pret_modules===undefined){window.pret_modules={};}\n"
             "var pret_modules=window.pret_modules;\n"
@@ -493,14 +494,16 @@ class PretMarshaler:
         order.remove("org.transcrypt.__runtime__")  # already bundled in js
 
         js = header + "\n\n".join(mods[m] for m in order) + "\n//# sourceURL=dynamic_factory.js"
-        return [base64.b64encode(blob).decode("ascii"), js]
+        return blob, js
 
-    def get_serialized(self):
-        return self._build_bundle(self._file.getvalue())
+    def get_serialized_bytes(self) -> Tuple[bytes, str]:
+        if self._serialized_bytes_cache is None:
+            self._serialized_bytes_cache = self._build_bundle(self._file.getvalue())
+        return self._serialized_bytes_cache
 
     def dump(self, obj):
         chunk_idx = self.append(obj)
-        return self.get_serialized(), chunk_idx
+        return self.get_serialized_bytes(), chunk_idx
 
     def _encoder(self, encoder, value):
         if hasattr(value, "__name__"):
