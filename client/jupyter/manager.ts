@@ -16,12 +16,21 @@ import * as KernelMessage from "@jupyterlab/services/lib/kernel/messages";
 
 import useSyncExternalStoreExports from "use-sync-external-store/shim";
 
-import { PretSerialized, PretViewData } from "./widget";
+import { PretViewData } from "./widget";
 import { makeLoadApp } from "../appLoader";
+import type { PretSerialized } from "../appLoader";
 
 type BundleResponse = {
     serialized: PretSerialized;
     maxChunkIdx: number;
+    byteLength: number;
+};
+
+type BundleRequest = {
+    resolve: (value: BundleResponse) => void;
+    reject: (reason?: any) => void;
+    marshalerId: string;
+    byteOffset: number;
 };
 
 type PretConnectionState = {
@@ -37,6 +46,46 @@ const PRET_BUNDLE_REQUEST_TIMEOUT_MS = 10000;
 const PRET_COMM_ACK_TIMEOUT_MS = 10000;
 const PRET_IS_ALIVE_TIMEOUT_MS = 3000;
 const PRET_IS_ALIVE_MIN_INTERVAL_MS = 1500;
+
+const toUint8Array = (
+    buffer?: ArrayBuffer | ArrayBufferView
+): Uint8Array<ArrayBuffer> => {
+    if (!buffer) {
+        return new Uint8Array(0);
+    }
+    if (buffer instanceof ArrayBuffer) {
+        return new Uint8Array(buffer);
+    }
+    return new Uint8Array(
+        buffer.buffer as ArrayBuffer,
+        buffer.byteOffset,
+        buffer.byteLength
+    );
+};
+
+const concatUint8Arrays = (left: Uint8Array, right: Uint8Array): Uint8Array => {
+    const merged = new Uint8Array(left.length + right.length);
+    merged.set(left);
+    merged.set(right, left.length);
+    return merged;
+};
+
+const maybeDecompressBytes = async (
+    bytes: Uint8Array<ArrayBuffer>,
+    compression?: string
+): Promise<Uint8Array> => {
+    if (!compression) {
+        return bytes;
+    }
+    if (compression !== "gzip") {
+        throw new Error(`Unsupported PRET bundle compression: ${compression}`);
+    }
+    if (typeof DecompressionStream !== "function") {
+        throw new Error("DecompressionStream is not available in this browser.");
+    }
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+};
 
 // @ts-ignore
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
@@ -61,10 +110,7 @@ export default class PretJupyterHandler {
     // Each event calls .then on this promise and replaces it to queue itself
     private unpack: ReturnType<typeof makeLoadApp>;
     private appManager: any;
-    private bundleRequests: Map<
-        string,
-        { resolve: (value: BundleResponse) => void; reject: (reason?: any) => void }
-    >;
+    private bundleRequests: Map<string, BundleRequest>;
     private bundleCache: Map<string, BundleResponse>;
     private bundleInFlight: Map<string, Promise<BundleResponse>>;
     private bundleRequestSeq: number;
@@ -431,7 +477,7 @@ export default class PretJupyterHandler {
     };
 
 
-    handleCommMessage = (msg: KernelMessage.ICommMsgMsg) => {
+    handleCommMessage = async (msg: KernelMessage.ICommMsgMsg) => {
         const msgContent = msg?.content?.data as
             | { method?: string; data?: Record<string, unknown> }
             | undefined;
@@ -442,13 +488,18 @@ export default class PretJupyterHandler {
             const payload = (msgContent.data ?? {}) as {
                 request_id?: string;
                 marshaler_id?: string;
-                serialized?: PretSerialized;
+                code?: string;
                 error?: string;
                 max_chunk_idx?: number;
+                byte_offset?: number;
+                byte_length?: number;
+                compression?: string | null;
             };
-            const {request_id, marshaler_id, serialized, error} = payload;
-            const maxChunkIdx =
-                typeof payload.max_chunk_idx === "number" ? payload.max_chunk_idx : -1;
+            const {request_id, marshaler_id, code, error} = payload;
+            const maxChunkIdx = typeof payload.max_chunk_idx === "number" ? payload.max_chunk_idx : -1;
+            const byteOffset = typeof payload.byte_offset === "number" ? payload.byte_offset : -1;
+            const byteLength = typeof payload.byte_length === "number" ? payload.byte_length : -1;
+            const compression = typeof payload.compression === "string" ? payload.compression : undefined;
             const pending = request_id ? this.bundleRequests.get(request_id) : null;
             if (pending) {
                 this.bundleRequests.delete(request_id);
@@ -458,22 +509,40 @@ export default class PretJupyterHandler {
                         ? "PRET_STALE_MARSHALER"
                         : "PRET_BUNDLE_ERROR";
                     pending.reject(typedError);
-                } else if (!serialized) {
+                } else if (!code) {
                     pending.reject(
                         new Error(
                             `Bundle response for ${marshaler_id || "unknown"} was empty`
                         )
                     );
-                } else if (maxChunkIdx < 0) {
+                } else if (maxChunkIdx < 0 || byteOffset < 0 || byteLength < 0) {
                     pending.reject(
                         new Error(
-                            `Bundle response for ${marshaler_id || "unknown"} did not include max_chunk_idx`
+                            `Bundle response for ${marshaler_id || "unknown"} was incomplete`
                         )
                     );
                 } else {
+                    const delta = await maybeDecompressBytes(
+                        toUint8Array(msg.buffers?.[0]),
+                        compression
+                    );
+                    let bytes = delta;
+                    if (byteOffset > 0) {
+                        const cached = this.bundleCache.get(pending.marshalerId);
+                        if (!cached || cached.byteLength !== pending.byteOffset) {
+                            pending.reject(
+                                new Error(
+                                    `Bundle cache for ${pending.marshalerId} is out of sync with byte offset ${byteOffset}`
+                                )
+                            );
+                            return;
+                        }
+                        bytes = concatUint8Arrays(cached.serialized[0] as Uint8Array, delta);
+                    }
                     pending.resolve({
-                        serialized: serialized as PretSerialized,
+                        serialized: [bytes, code],
                         maxChunkIdx,
+                        byteLength,
                     });
                 }
             } else {
@@ -572,13 +641,19 @@ export default class PretJupyterHandler {
         }
 
         const requestId = `bundle-${++this.bundleRequestSeq}`;
+        const byteOffset = cached ? cached.byteLength : 0;
         let resolveFn!: (value: BundleResponse) => void;
         let rejectFn!: (reason?: any) => void;
         const pending = new Promise<BundleResponse>((resolve, reject) => {
             resolveFn = resolve;
             rejectFn = reject;
         });
-        this.bundleRequests.set(requestId, {resolve: resolveFn, reject: rejectFn});
+        this.bundleRequests.set(requestId, {
+            resolve: resolveFn,
+            reject: rejectFn,
+            marshalerId,
+            byteOffset,
+        });
         const timeout = setTimeout(() => {
             const pendingRequest = this.bundleRequests.get(requestId);
             if (!pendingRequest) {
@@ -619,6 +694,7 @@ export default class PretJupyterHandler {
             await this.sendMessage("bundle_request", {
                 marshaler_id: marshalerId,
                 request_id: requestId,
+                byte_offset: byteOffset,
             });
         } catch (err) {
             this.bundleRequests.delete(requestId);

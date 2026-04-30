@@ -4,8 +4,7 @@ import { Widget as LuminoWidget } from "@lumino/widgets";
 
 import PretJupyterHandler from "./manager";
 import Loading from "../components/Loading";
-
-export type PretSerialized = [string, string];
+import type { PretSerialized } from "../appLoader";
 
 export type PretViewData = {
   serialized?: PretSerialized;

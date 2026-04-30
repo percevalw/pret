@@ -5,6 +5,7 @@ state synchronization, and communication between the frontend and backend.
 
 import asyncio
 import base64
+import gzip
 import hashlib
 import inspect
 import uuid
@@ -20,6 +21,7 @@ from pret.marshal import marshal_as
 CallableParams = ParamSpec("ServerCallableParams")
 CallableReturn = TypeVar("CallableReturn")
 UNSET = object()
+PRET_BUNDLE_GZIP_MIN_BYTES = 256 * 1024
 
 
 def make_remote_callable(function_id):
@@ -318,7 +320,7 @@ class Manager:
         else:
             raise Exception(f"Unknown method: {method}")
 
-    def handle_bundle_request(self):
+    def handle_bundle_request(self, data):
         raise NotImplementedError()
 
     async def handle_call_msg(self, data):
@@ -678,13 +680,14 @@ class JupyterServerManager(Manager):
             self.comm.close()
             self.comm = None
 
-    def send_message(self, method, data, metadata=None):
+    def send_message(self, method, data, metadata=None, buffers=None):
         self.comm.send(
             {
                 "method": method,
                 "data": data,
             },
             metadata,
+            buffers,
         )
 
     def __del__(self):
@@ -718,6 +721,7 @@ class JupyterServerManager(Manager):
     def handle_bundle_request(self, data):
         request_id = data.get("request_id")
         marshaler_id = data.get("marshaler_id")
+        byte_offset = data.get("byte_offset", 0)
         try:
             if marshaler_id is None:
                 raise Exception("marshaler_id is required")
@@ -732,15 +736,25 @@ class JupyterServerManager(Manager):
                     f"after you run a cell, and consider restarting the kernel and/or reloading the"
                     f"page."
                 )
-            serialized = marshaler.get_serialized()
+            blob, code = marshaler.get_serialized_bytes()
+            bundle_suffix = memoryview(blob)[byte_offset:]
+            compression = None
+            if len(bundle_suffix) >= PRET_BUNDLE_GZIP_MIN_BYTES:
+                bundle_suffix = gzip.compress(bundle_suffix)
+                compression = "gzip"
             return (
                 "bundle_response",
                 {
                     "request_id": request_id,
                     "marshaler_id": marshaler_id,
                     "max_chunk_idx": marshaler.chunk_idx - 1,
-                    "serialized": serialized,
+                    "byte_offset": byte_offset,
+                    "byte_length": len(blob),
+                    "code": code,
+                    "compression": compression,
                 },
+                None,
+                [bundle_suffix],
             )
         except Exception as e:
             return (

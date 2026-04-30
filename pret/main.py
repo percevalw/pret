@@ -36,7 +36,7 @@ def build(
     dev: bool = False,
 ) -> ContextManager[
     Tuple[
-        Dict[str, Union[str, Path]],
+        Dict[str, Union[str, Path, bytes]],
         List[Tuple[str, str]],
         str,
     ]
@@ -70,8 +70,8 @@ def build(
 
     Returns
     -------
-    Tuple[Dict[str, Union[str, Path]], List[Tuple[str, str]], str]
-        A tuple containing the assets, entries and pickle filename
+    Tuple[Dict[str, Union[str, Path, bytes]], List[Tuple[str, str]], str]
+        A tuple containing the assets, entries and bundle bytes filename
     """
     npm = None
     if mode is True:
@@ -100,23 +100,27 @@ def build(
         delete_build = False
 
     marshaler = get_shared_marshaler()
-    marshaler_file_str = ""
+    bundle_blob = b""
+    bundle_code = ""
     for renderable in renderables:
-        marshaler_file_str = json.dumps(renderable.bundle()[0])
+        (bundle_blob, bundle_code), _ = renderable.bundle()
 
     # Extract js globals and them to a temp file to be bundled with webpack
     js_globals, packages = extract_js_dependencies(marshaler.accessed_global_refs)
 
     js_globals_file = build_dir / "globals.ts"
-    content_hash = hashlib.md5(marshaler_file_str.encode("utf-8")).hexdigest()[:20]
-    bundle_filename = f"bundle.{content_hash}.pkl"
+    content_hash = hashlib.md5(bundle_blob + bundle_code.encode("utf-8")).hexdigest()[:20]
+    bundle_bytes_filename = f"bundle.{content_hash}.cbor"
+    bundle_code_filename = f"bundle.{content_hash}.code.js"
 
     if mode == BundleMode.MONOLITHIC:
         with js_globals_file.open("w") as f:
             f.write(js_globals)
 
-        with (static_dir / bundle_filename).open("w") as f:
-            f.write(marshaler_file_str)
+        with (static_dir / bundle_bytes_filename).open("wb") as f:
+            f.write(bundle_blob)
+        with (static_dir / bundle_code_filename).open("w") as f:
+            f.write(bundle_code)
 
         webpack_config = Path(__file__).parent / "webpack.standalone.js"
         # fmt: off
@@ -131,6 +135,11 @@ def build(
                 "--mode", "development" if dev else "production",
             ],
             cwd=os.getcwd(),
+            env={
+                **os.environ,
+                "PRET_BUNDLE_BYTES_FILE": "/assets/" + bundle_bytes_filename,
+                "PRET_BUNDLE_CODE_FILE": "/assets/" + bundle_code_filename,
+            },
         )
         # fmt: on
 
@@ -155,13 +164,15 @@ def build(
                 "'__PRET_REMOTE_IMPORTS__'",
                 str([remote_name for _, remote_name in entries]),
             )
-            .replace("__PRET_PICKLE_FILE__", "/assets/" + bundle_filename)
+            .replace("__PRET_BUNDLE_BYTES_FILE__", "/assets/" + bundle_bytes_filename)
+            .replace("__PRET_BUNDLE_CODE_FILE__", "/assets/" + bundle_code_filename)
         )
 
         assets = {
             **base_static_mapping,
             **extension_static_mapping,
-            bundle_filename: marshaler_file_str,
+            bundle_bytes_filename: bundle_blob,
+            bundle_code_filename: bundle_code,
             # override the index.html file in base_static_mapping
             "index.html": index_html_str,
         }
@@ -169,7 +180,7 @@ def build(
         # static_dir.mkdir(parents=True, exist_ok=True)
         # Include entry points in the index html file
 
-    yield assets, entries, bundle_filename
+    yield assets, entries, bundle_bytes_filename
 
     if delete_static:
         shutil.rmtree(static_dir)

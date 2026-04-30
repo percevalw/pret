@@ -101,37 +101,41 @@ addExtension({
   },
 });
 
+export type PretSerialized = [Uint8Array, string];
+
 export function makeLoadApp() {
-  type CacheEntry = [Decoder, Map<number, any>, number];
+  type CacheEntry = [Decoder, Map<number, any>, number, string | null];
 
   const cache = new Map<string, CacheEntry>();
 
-  type LoadApp = ((serialized: any, marshalerId: string, chunkIdx: number) => any) & {
+  type LoadApp = ((serialized: PretSerialized, marshalerId: string, chunkIdx: number) => any) & {
     clearCache: (marshalerId?: string) => void;
   };
 
-  const loadApp = ((serialized: any, marshalerId: string, chunkIdx: number) => {
+  const loadApp = ((serialized: PretSerialized, marshalerId: string, chunkIdx: number) => {
     if (!cache.has(marshalerId)) {
       const cached: CacheEntry = [
         new Decoder({ useRecords: false, shareReferenceMap: true } as any),
         new Map(),
         0,
+        null,
       ];
       cache.set(marshalerId, cached);
     }
     const entry = cache.get(marshalerId)!;
-    let [decoder, chunkStore, lastOffset] = entry;
+    let [decoder, chunkStore, lastOffset, loadedCode] = entry;
 
     if (chunkStore.has(chunkIdx)) {
       return chunkStore.get(chunkIdx);
     }
 
-    const [cborDataB64, code] = serialized;
-    Object.assign(factories, new Function(code)());
+    const [cborData, code] = serialized;
+    if (loadedCode !== code) {
+      Object.assign(factories, new Function(code)());
+      entry[3] = code;
+    }
 
-    const bytes = Uint8Array.from(atob(cborDataB64).slice(lastOffset), (c) =>
-      c.charCodeAt(0)
-    );
+    const bytes = cborData.subarray(lastOffset);
     let results: any[];
     try {
       results = decoder.decodeMultiple(bytes);

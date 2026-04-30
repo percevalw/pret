@@ -16,7 +16,7 @@ from quart import (
 from pret.manager import get_manager
 
 
-def make_app(assets: Dict[str, Union[str, Path]]) -> Quart:
+def make_app(assets: Dict[str, Union[str, Path, bytes]]) -> Quart:
     app = Quart(__name__)
 
     manager = get_manager()

@@ -5,6 +5,7 @@ import Loading from "../components/Loading";
 import "@pret-globals";
 
 import { makeLoadApp } from "../appLoader";
+import type { PretSerialized } from "../appLoader";
 
 const createResource = (promise) => {
   let status = "loading";
@@ -47,13 +48,13 @@ const loadExtensions = async () => {
 };
 
 async function loadBundle() {
-  const [bundle, extensions] = await Promise.all([
-    fetch((window as any).PRET_PICKLE_FILE).then((res) => res.json()),
-    // Load the extensions that will make required modules available as globals
+  const [bundleBytes, bundleCode, extensions] = await Promise.all([
+    fetch((window as any).PRET_BUNDLE_BYTES_FILE).then((res) => res.arrayBuffer()),
+    fetch((window as any).PRET_BUNDLE_CODE_FILE).then((res) => res.text()),
     loadExtensions(),
   ]);
   return {
-    bundle: bundle,
+    bundle: [new Uint8Array(bundleBytes), bundleCode] as PretSerialized,
   }
 }
 
