@@ -24,6 +24,22 @@ Object.defineProperty(Y.Doc.prototype, "apply_update", {
   enumerable: false,
 });
 
+Object.defineProperty(Y.Doc.prototype, "get_state", {
+  value() {
+    return Y.encodeStateVector(this);
+  },
+  configurable: true,
+  enumerable: false,
+});
+
+Object.defineProperty(Y.Doc.prototype, "get_update", {
+  value(stateVector?: Uint8Array) {
+    return Y.encodeStateAsUpdate(this, stateVector);
+  },
+  configurable: true,
+  enumerable: false,
+});
+
 // Put the global variables in the window object to allow pret stub components and stub functions to access them
 (window as any).React = React;
 (React as any).useSyncExternalStore =
