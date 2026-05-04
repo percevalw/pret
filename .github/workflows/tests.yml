@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        python-version: [ "3.7", "3.8", "3.9", "3.10" ]
+        python-version: [ "3.8", "3.9", "3.10", "3.11" ]
 
     steps:
       - name: 'Compute git fetch depth'
@@ -106,7 +106,6 @@ jobs:
 
       # Temporarily disabled while I figure out what's wrong with jlab 4
       - name: 'Run tests for JupyterLab 4'
-        if: ${{ matrix.python-version != '3.7' }}
         run: |
           uv pip install pip "jupyterlab>=4"
           sh tests/jupyter/run.sh tests/jupyter --retries=2
