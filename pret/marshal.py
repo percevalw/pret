@@ -6,12 +6,12 @@ environment.
 
 import ast
 import collections
-import contextlib
 import functools
 import inspect
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -20,7 +20,7 @@ import types
 import uuid
 import weakref
 from asyncio import Future
-from io import BytesIO, StringIO
+from io import BytesIO
 from pathlib import Path
 from types import FunctionType
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -28,7 +28,6 @@ from weakref import WeakKeyDictionary
 
 import astunparse
 from pygetsource import getsource
-from transcrypt.__main__ import main as transcrypt
 
 try:
     import cbor2._encoder as cbor2_encoder
@@ -128,25 +127,6 @@ def make_stub_js_module(
     marshal_as(module, js=f"return pret_modules.js.{global_name};")
     setattr(js, global_name, module)
     return module
-
-
-@contextlib.contextmanager
-def redirect_argv(*args):
-    sys._argv = sys.argv[:]
-    sys.argv = list(args)
-    yield
-    sys.argv = sys._argv
-
-
-@contextlib.contextmanager
-def capture_stdout():
-    new_target = StringIO()
-    old_target = sys.stdout
-    sys.stdout = new_target
-    try:
-        yield new_target
-    finally:
-        sys.stdout = old_target
 
 
 marshal_as(
@@ -358,22 +338,29 @@ class PretMarshaler:
         with open(tmpdir / "__main__.py", "w") as f:
             f.write(py_module_string)
         tmpfile = str(tmpdir / "__main__.py")
-        with redirect_argv(
-            *("-b", "-n", "-m", "-p", "window"),
+        command = [
+            sys.executable,
+            "-m",
+            "transcrypt",
+            "-b",
+            "-n",
+            "-m",
+            "-p",
+            "window",
             tmpfile,
-        ):
-            try:
-                with capture_stdout() as output:
-                    transcrypt()
-            except Exception:
-                import traceback
-
-                output = StringIO(f"Error when transpiling {tmpfile}:\n" + traceback.format_exc())
-            if "Saving" not in output.getvalue() or "Error" in output.getvalue():
-                raise Exception(
-                    "Could not export your Python app to Javascript with Transcrypt. "
-                    "Here is the log: \n{}".format(output.getvalue())
-                )
+        ]
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        output = result.stdout or ""
+        if result.returncode != 0 or "Saving" not in output or "Error" in output:
+            raise Exception(
+                f"Could not export your Python app to Javascript with Transcrypt in {tmpdir}. "
+                f"Here is the log: \n{output}"
+            )
         res = (tmpdir / "__target__/__main__.js").read_text()
         res += "\n" + "\n".join(v[1] for k, v in self.source_codes.items() if v[0] == "js")
         for k, v in self.source_codes.items():
