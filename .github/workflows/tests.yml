@@ -71,7 +71,7 @@ jobs:
       - name: 'Set up Node'
         uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
 
       # UV fails to install python 3.7 so with use the base python action
       # and let UV use the installed python
@@ -139,7 +139,7 @@ jobs:
       - name: 'Set up Node'
         uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -172,7 +172,7 @@ jobs:
       - name: 'Set up Node'
         uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
 
       - name: 'Generate Playwright report'
         run: |
@@ -203,7 +203,7 @@ jobs:
       - name: 'Set up Node'
         uses: actions/setup-node@v4
         with:
-          node-version: "20.x"
+          node-version: "22.x"
 
       - name: 'Install uv'
         uses: astral-sh/setup-uv@v6
