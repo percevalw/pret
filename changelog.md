@@ -1,9 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Avoid Transcrypt's silent failures by calling it as a subprocess instead of importing it
+- Synchronized stores should now be more effective at blocking writes while disconnected or while sync is blocked and roll back unsaved pending changes on disconnection
+- Such disconnections now trigger a state synchronization upon connection recovery
+- In Jupyter, we now better detect app disconnections by listening to global jupyter service connection failure signals
+- In Jupyter, we should better recover/attach comms on disconnected or already running notebooks
+
 ## v0.6.2 (2026-02-28)
 
 - Fix remote function call from the backend
-- Avoid Transcrypt's silent failures by calling it as a subprocess instead of importing it
 
 ## v0.6.1 (2026-02-27)
 

@@ -37,6 +37,8 @@ const asJSON = (v: any) =>
   v && typeof v.toJSON === "function" ? v.toJSON() : v;
 
 const undoManagersByDoc = new WeakMap<Y.Doc, Y.UndoManager>();
+const syncGuardsByDoc = new WeakMap<Y.Doc, () => void>();
+const STORE_LOCAL_ORIGIN = {};
 
 const getUndoScope = (doc: Y.Doc): Y.AbstractType<any>[] => {
   const scope: Y.AbstractType<any>[] = [];
@@ -69,11 +71,28 @@ const getDocFromProxy = (proxy: any): Y.Doc => {
 export function ensureUndoManagerForDoc(doc: Y.Doc): Y.UndoManager {
   let manager = undoManagersByDoc.get(doc);
   if (!manager) {
-    manager = new Y.UndoManager(getUndoScope(doc), { captureTimeout: 0 });
+    manager = new Y.UndoManager(getUndoScope(doc), {
+      captureTimeout: 0,
+      trackedOrigins: new Set([STORE_LOCAL_ORIGIN]),
+    });
     undoManagersByDoc.set(doc, manager);
   }
   return manager;
 }
+
+export function installSyncGuardForDoc(doc: Y.Doc, guard: () => void): void {
+  syncGuardsByDoc.set(doc, guard);
+}
+
+export function clearSyncGuardForDoc(doc: Y.Doc): void {
+  syncGuardsByDoc.delete(doc);
+}
+
+const assertDocWritable = (doc: Y.Doc | null | undefined): void => {
+  if (!doc) return;
+  const guard = syncGuardsByDoc.get(doc);
+  if (guard) guard();
+};
 
 export function ensureUndoManager(proxy: any): Y.UndoManager {
   return ensureUndoManagerForDoc(getDocFromProxy(proxy));
@@ -86,6 +105,19 @@ export function undoDoc(doc: Y.Doc): boolean {
   }
   manager.undo();
   return true;
+}
+
+export function undoDocChanges(doc: Y.Doc, count: number = 1): number {
+  const manager = ensureUndoManagerForDoc(doc);
+  let rolledBack = 0;
+  for (let i = 0; i < count; i++) {
+    if (!manager.canUndo()) {
+      break;
+    }
+    manager.undo();
+    rolledBack += 1;
+  }
+  return rolledBack;
 }
 
 export function redoDoc(doc: Y.Doc): boolean {
@@ -287,7 +319,11 @@ export function makeStore<T = any>(
             return Array.isArray(currentJ) ? currentJ.length : y.length;
           } else if (prop === "push") {
             return (...items: any[]) => {
-              const result = y.doc?.transact(() => y.push(items.map(jsToY)));
+              assertDocWritable(y.doc);
+              const result = y.doc?.transact(
+                () => y.push(items.map(jsToY)),
+                STORE_LOCAL_ORIGIN
+              );
               patchDraft(rec, (container) => {
                 if (!Array.isArray(container)) return;
                 container.push(...items.map(cloneJSONValue));
@@ -297,10 +333,14 @@ export function makeStore<T = any>(
             };
           } else if (prop === "splice") {
             return (start: number, del?: number, ...items: any[]) => {
-              const result = y.doc?.transact(() => {
-                if (del && del > 0) y.delete(start, del);
-                if (items.length) y.insert(start, items.map(jsToY));
-              });
+              assertDocWritable(y.doc);
+              const result = y.doc?.transact(
+                () => {
+                  if (del && del > 0) y.delete(start, del);
+                  if (items.length) y.insert(start, items.map(jsToY));
+                },
+                STORE_LOCAL_ORIGIN
+              );
               patchDraft(rec, (container) => {
                 if (!Array.isArray(container)) return;
                 const mapped = items.map(cloneJSONValue);
@@ -341,9 +381,14 @@ export function makeStore<T = any>(
       },
 
       set(_t, prop, value) {
+        assertDocWritable(y.doc);
         if (y instanceof Y.Map) {
           const k = String(prop);
-          y.set(k, jsToY(value));
+          if (y.doc) {
+            y.doc.transact(() => y.set(k, jsToY(value)), STORE_LOCAL_ORIGIN);
+          } else {
+            y.set(k, jsToY(value));
+          }
           patchDraft(rec, (container) => {
             if (Array.isArray(container) || !container) return;
             (container as any)[k] = cloneJSONValue(value);
@@ -354,11 +399,14 @@ export function makeStore<T = any>(
         if (y instanceof Y.Array) {
           const i = Number(prop);
           if (!Number.isNaN(i)) {
-            y.doc?.transact(() => {
-              while (y.length <= i) y.push([null]);
-              y.delete(i, 1);
-              y.insert(i, [jsToY(value)]);
-            });
+            y.doc?.transact(
+              () => {
+                while (y.length <= i) y.push([null]);
+                y.delete(i, 1);
+                y.insert(i, [jsToY(value)]);
+              },
+              STORE_LOCAL_ORIGIN
+            );
             patchDraft(rec, (container) => {
               if (!Array.isArray(container)) return;
               while (container.length <= i) container.push(null);
@@ -369,11 +417,16 @@ export function makeStore<T = any>(
           } else if (prop === "length") {
             const len = Number(value);
             if (!Number.isNaN(len)) {
-              if (len < y.length) {
-                y.delete(len, y.length - len);
-              } else {
-                y.insert(y.length, new Array(len - y.length).fill(null));
-              }
+              y.doc?.transact(
+                () => {
+                  if (len < y.length) {
+                    y.delete(len, y.length - len);
+                  } else {
+                    y.insert(y.length, new Array(len - y.length).fill(null));
+                  }
+                },
+                STORE_LOCAL_ORIGIN
+              );
               patchDraft(rec, (container) => {
                 if (!Array.isArray(container)) return;
                 if (len < container.length) {
@@ -391,9 +444,14 @@ export function makeStore<T = any>(
       },
 
       deleteProperty(_t, prop) {
+        assertDocWritable(y.doc);
         if (y instanceof Y.Map) {
           const k = String(prop);
-          y.delete(k);
+          if (y.doc) {
+            y.doc.transact(() => y.delete(k), STORE_LOCAL_ORIGIN);
+          } else {
+            y.delete(k);
+          }
           patchDraft(rec, (container) => {
             if (Array.isArray(container) || !container) return;
             delete (container as any)[k];
@@ -404,7 +462,7 @@ export function makeStore<T = any>(
         if (y instanceof Y.Array) {
           const i = Number(prop);
           if (!Number.isNaN(i)) {
-            y.delete(i, 1);
+            y.doc?.transact(() => y.delete(i, 1), STORE_LOCAL_ORIGIN);
             patchDraft(rec, (container) => {
               if (!Array.isArray(container)) return;
               container.splice(i, 1);
@@ -635,7 +693,7 @@ export function useSnapshot<T = any>(node: any): T {
 
 export const beginTransaction = (
   proxy: any,
-  origin: any = null,
+  origin: any = STORE_LOCAL_ORIGIN,
   local: boolean = true
 ): [Transaction, () => void] => {
   const rec: NodeRec | undefined = proxy?.[NODE];
@@ -651,6 +709,7 @@ export const beginTransaction = (
   const doc = rec.y.doc as DocInternals | null;
   if (!doc)
     throw new Error("beginTransaction expects a proxy bound to an attached Y.Doc.");
+  assertDocWritable(doc);
 
   // Nested manual begin inside an existing transaction does not create a new scope in Yjs.
   if (doc._transaction !== null) {

@@ -43,7 +43,10 @@ def make_app(assets: Dict[str, Union[str, Path, bytes]]) -> Quart:
                     await websocket.receive_json(),
                     websocket_id,
                 )
-                await websocket.send_json(message)
+                if inspect.isawaitable(message):
+                    message = await message
+                if message is not None:
+                    await websocket.send_json(message)
         finally:
             if task is not None:
                 task.cancel()

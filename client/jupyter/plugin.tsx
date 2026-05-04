@@ -4,7 +4,7 @@ import React from "react";
 import { ArrayExt, filter, toArray } from "@lumino/algorithm"; /* @ts-ignore */
 import { AttachedProperty } from "@lumino/properties"; /* @ts-ignore */
 import { DisposableDelegate } from "@lumino/disposable"; /* @ts-ignore */
-import { KernelMessage } from "@jupyterlab/services"; /* @ts-ignore */
+import { KernelMessage, ServiceManager } from "@jupyterlab/services"; /* @ts-ignore */
 import { IDocumentManager } from "@jupyterlab/docmanager"; /* @ts-ignore */
 import { IMainMenu } from "@jupyterlab/mainmenu"; /* @ts-ignore */
 import {
@@ -28,7 +28,7 @@ import {
   ILayoutRestorer,
   JupyterFrontEnd,
   JupyterFrontEndPlugin,
-} from "@jupyterlab/application"; /* @ts-ignore */
+} from "@jupyterlab/application";
 import { OutputArea } from "@jupyterlab/outputarea"; /* @ts-ignore */
 import { CodeCell, ICodeCellModel } from "@jupyterlab/cells"; /* @ts-ignore */
 // import {LabIcon} from '@jupyterlab/ui-components'; /* @ts-ignore */
@@ -184,13 +184,14 @@ Here we add the singleton PretJupyterHandler to the given editor (context)
 export function registerPretJupyterHandler(
   context,
   rendermime: IRenderMimeRegistry,
-  renderers: Generator<PretViewWidget>
+  renderers: Generator<PretViewWidget>,
+  serviceManager: ServiceManager.IManager,
 ) {
   const ensureManager = () => {
     if (manager) {
       return manager;
     }
-    const instance = new PretJupyterHandler(context, SETTINGS);
+    const instance = new PretJupyterHandler(context, serviceManager);
     // @ts-ignore
     window.pretManager = instance;
     contextToPretJupyterHandlerRegistry.set(context, instance);
@@ -203,50 +204,53 @@ export function registerPretJupyterHandler(
     r.manager = ensureManager();
   }
 
-    // Replace the placeholder widget renderer with one bound to this widget
-    // manager.
-    rendermime.removeMimeType(MIMETYPE);
-    rendermime.addFactory(
-        {
-            safe: true,
-            mimeTypes: [MIMETYPE],
-            // @ts-ignore
-            createRenderer: options => {
-                const widget = new PretViewWidget(options, ensureManager());
-                const path = context?.path ?? '';
-                const pendingAutosave = pendingPretAutosaveByPath.get(path);
-                if (pendingAutosave) {
-                    clearTimeout(pendingAutosave);
-                }
-                pendingPretAutosaveByPath.set(
-                    path,
-                    setTimeout(() => {
-                        pendingPretAutosaveByPath.delete(path);
-                        void context?.save?.().catch((reason) => {
-                            console.error(`Failed to autosave PRET notebook ${path}:`, reason);
-                        });
-                    }, PRET_AUTOSAVE_DELAY_MS)
-                );
-                return widget;
-            }
-        },
-        0
-    );
-
-    return new DisposableDelegate(() => {
-        if (rendermime) {
-            rendermime.removeMimeType(MIMETYPE);
-        }
-        if (manager) {
-            manager.dispose();
-        }
-        const path = context?.path ?? '';
+  // Replace the placeholder widget renderer with one bound to this widget
+  // manager.
+  rendermime.removeMimeType(MIMETYPE);
+  rendermime.addFactory(
+    {
+      safe: true,
+      mimeTypes: [MIMETYPE],
+      // @ts-ignore
+      createRenderer: (options) => {
+        const widget = new PretViewWidget(options, ensureManager());
+        const path = context?.path ?? "";
         const pendingAutosave = pendingPretAutosaveByPath.get(path);
         if (pendingAutosave) {
-            clearTimeout(pendingAutosave);
-            pendingPretAutosaveByPath.delete(path);
+          clearTimeout(pendingAutosave);
         }
-    });
+        pendingPretAutosaveByPath.set(
+          path,
+          setTimeout(() => {
+            pendingPretAutosaveByPath.delete(path);
+            void context?.save?.().catch((reason) => {
+              console.error(
+                `Failed to autosave PRET notebook ${path}:`,
+                reason
+              );
+            });
+          }, PRET_AUTOSAVE_DELAY_MS)
+        );
+        return widget;
+      },
+    },
+    0
+  );
+
+  return new DisposableDelegate(() => {
+    if (rendermime) {
+      rendermime.removeMimeType(MIMETYPE);
+    }
+    if (manager) {
+      manager.dispose();
+    }
+    const path = context?.path ?? "";
+    const pendingAutosave = pendingPretAutosaveByPath.get(path);
+    if (pendingAutosave) {
+      clearTimeout(pendingAutosave);
+      pendingPretAutosaveByPath.delete(path);
+    }
+  });
 }
 
 export function registerOutputListener(notebook: Notebook, listener) {
@@ -311,7 +315,7 @@ async function activatePretExtension(
   restorer: ILayoutRestorer | null
   //palette: ICommandPalette,
 ) {
-  const { commands, shell, contextMenu } = app;
+  const { commands, shell, contextMenu, serviceManager } = app;
   const pretAreas = new WidgetTracker<MainAreaWidget<PretClonedArea>>({
     namespace: "pret-areas",
   });
@@ -391,7 +395,8 @@ async function activatePretExtension(
           // @ts-ignore
           getWidgetsFromNotebook(panel.content),
           getLinkedWidgetsFromApp(app, panel.sessionContext.path)
-        )
+        ),
+        serviceManager,
       );
 
       bindUnhandledIOPubMessageSignal(panel);
@@ -403,7 +408,8 @@ async function activatePretExtension(
         chain(
           getWidgetsFromNotebook(panel.content),
           getLinkedWidgetsFromApp(app, panel.sessionContext.path)
-        )
+        ),
+        serviceManager,
       );
       bindUnhandledIOPubMessageSignal(panel);
     });
