@@ -3,6 +3,7 @@
 ## v0.6.2 (2026-02-28)
 
 - Fix remote function call from the backend
+- Avoid Transcrypt's silent failures by calling it as a subprocess instead of importing it
 
 ## v0.6.1 (2026-02-27)
 
