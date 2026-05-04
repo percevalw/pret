@@ -15,7 +15,7 @@ dependencies = [
     "quart",
     "typer",
     "pygetsource",
-    "cbor2",
+    "cbor2<6.0.0",  # temp fix
     "pret-pycrdt>=0.12.20-post2",
     "watchfiles",
 ]
