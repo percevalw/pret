@@ -11,7 +11,6 @@ export type PretViewData = {
   marshaler_id: string;
   chunk_idx: number;
 };
-const PRET_READY_TIMEOUT_MS = 8000;
 
 /**
  * A renderer for pret Views with Jupyter (Lumino) framework
@@ -52,6 +51,9 @@ export class PretViewWidget extends LuminoWidget {
   private _isRendered: boolean;
   private _renderNode: HTMLElement;
   private _fullpageNode: HTMLDivElement | null;
+  private _unsubscribeReadyChange: (() => void) | null;
+  private _renderFailureIsRetryable: boolean;
+  private _viewLoadPromise: Promise<void> | null;
 
   constructor(
     options: { view_data?: PretViewData; mimeType: string },
@@ -68,6 +70,9 @@ export class PretViewWidget extends LuminoWidget {
     this._isRendered = false;
     this._renderNode = this.node;
     this._fullpageNode = null;
+    this._unsubscribeReadyChange = null;
+    this._renderFailureIsRetryable = false;
+    this._viewLoadPromise = null;
 
     this.model = null;
 
@@ -76,6 +81,14 @@ export class PretViewWidget extends LuminoWidget {
     // wait for the mimetype manager to assign a model to this view and call renderModel
     // on its own (which will call showContent)
     this.addClass("pret-view");
+
+    this._unsubscribeReadyChange = this.manager.subscribeReadyChange(() => {
+      if (!this._viewLoadPromise && this._renderFailureIsRetryable) {
+        this.makeView = null;
+        this._renderFailureIsRetryable = false;
+        this.showContent();
+      }
+    });
 
     this.showContent();
   }
@@ -89,21 +102,21 @@ export class PretViewWidget extends LuminoWidget {
   }
 
   setFlag(flag: LuminoWidget.Flag) {
-    const wasVisible = this.isVisible;
     super.setFlag(flag);
-    if (this.isVisible && !wasVisible) {
+    if (this.isVisible && !this._isRendered) {
       this.showContent();
-    } else if (!this.isVisible && wasVisible) {
+    }
+    if (!this.isVisible) {
       this.hideContent();
     }
   }
 
   clearFlag(flag: LuminoWidget.Flag) {
-    const wasVisible = this.isVisible;
     super.clearFlag(flag);
-    if (this.isVisible && !wasVisible) {
+    if (this.isVisible && !this._isRendered) {
       this.showContent();
-    } else if (!this.isVisible && wasVisible) {
+    }
+    if (!this.isVisible) {
       this.hideContent();
     }
   }
@@ -126,6 +139,8 @@ export class PretViewWidget extends LuminoWidget {
   }
 
   dispose() {
+    this._unsubscribeReadyChange?.();
+    this._unsubscribeReadyChange = null;
     if (this._isRendered) {
       ReactDOM.unmountComponentAtNode(this._renderNode);
       this._isRendered = false;
@@ -209,22 +224,12 @@ export class PretViewWidget extends LuminoWidget {
 
     const Render = () => {
       if (!this.makeView) {
-        throw Promise.race([
-          this.manager.ready,
-          new Promise((_, reject) => {
-            setTimeout(() => {
-              const error: any = new Error(
-                "Timed out while connecting to the Jupyter backend."
-              );
-              error.code = "PRET_JUPYTER_DOWN";
-              reject(error);
-            }, PRET_READY_TIMEOUT_MS);
-          }),
-        ]).then(async () => {
+        this._viewLoadPromise ??= Promise.resolve().then(async () => {
           try {
             const unpackOnce = async () => {
               const viewData = await this.manager.resolveViewData(this.viewData);
               this.makeView = this.manager.unpackView(viewData);
+              this._renderFailureIsRetryable = false;
             };
 
             try {
@@ -259,6 +264,7 @@ export class PretViewWidget extends LuminoWidget {
             const jupyterDown = code === "PRET_JUPYTER_DOWN";
             const useFullpageFallback =
               this._fullpageNode !== null && this._renderNode === this._fullpageNode;
+            this._renderFailureIsRetryable = kernelDown || jupyterDown;
             this.makeView = () => {
               const [isRestarting, setIsRestarting] = React.useState(false);
               const [restartError, setRestartError] = React.useState("");
@@ -300,6 +306,7 @@ export class PretViewWidget extends LuminoWidget {
                           }
                           await restart();
                           this.makeView = null;
+                          this._renderFailureIsRetryable = false;
                           this.showContent();
                         } catch (restartErr: any) {
                           setRestartError(String(restartErr?.message ?? restartErr));
@@ -319,7 +326,10 @@ export class PretViewWidget extends LuminoWidget {
               );
             };
           }
+        }).finally(() => {
+          this._viewLoadPromise = null;
         });
+        throw this._viewLoadPromise;
       }
       return this.makeView();
     };

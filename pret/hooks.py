@@ -350,7 +350,6 @@ return function use_connection_status() {
                 transport: null,
                 connected: null,
                 reason: "manager_unavailable",
-                kernel_status: null,
                 kernel_connection_status: null,
                 last_error: null,
             };
@@ -371,7 +370,7 @@ def use_connection_status():
     -------
     dict
         A reactive status object with fields such as ``connected``, ``reason``,
-        ``transport``, ``kernel_status`` and ``kernel_connection_status``.
+        ``transport`` and ``kernel_connection_status``.
     """
 
 
