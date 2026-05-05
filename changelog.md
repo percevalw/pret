@@ -7,6 +7,7 @@
 - Such disconnections now trigger a state synchronization upon connection recovery
 - In Jupyter, we now better detect app disconnections by listening to global jupyter service connection failure signals
 - In Jupyter, we should better recover/attach comms on disconnected or already running notebooks
+- The `use_connection_status` hook is now notified (`state_write_rejection_count` and `last_state_write_rejection` fields) when the user tries to edit a synchronized state in a disconnected app.
 
 ## v0.6.2 (2026-02-28)
 

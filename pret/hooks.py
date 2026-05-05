@@ -352,6 +352,8 @@ return function use_connection_status() {
                 reason: "manager_unavailable",
                 kernel_connection_status: null,
                 last_error: null,
+                state_write_rejection_count: 0,
+                last_state_write_rejection: null,
             };
         }
         return manager.get_connection_status();

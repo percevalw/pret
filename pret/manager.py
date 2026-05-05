@@ -256,6 +256,8 @@ class ClientManager:
             "reason": None,
             "kernel_connection_status": None,
             "last_error": None,
+            "state_write_rejection_count": 0,
+            "last_state_write_rejection": None,
         }
         self.connection_state_listeners = set()
         self.state_sync = {}
@@ -321,10 +323,23 @@ class ClientManager:
 
         return unsubscribe
 
+    def notify_state_write_rejected(self, sync_id, reason):
+        new_state = dict(self.connection_state)
+        new_state["state_write_rejection_count"] = (
+            self.connection_state.get("state_write_rejection_count") or 0
+        ) + 1
+        new_state["last_state_write_rejection"] = {
+            "sync_id": sync_id,
+            "reason": reason,
+        }
+        self.connection_state = new_state
+        self.notify_connection_status_listeners()
+
     def assert_state_write_allowed(self, sync_id):
         connection = self.connection_state
         if connection.get("connected") is False:
             reason = connection.get("reason") or "disconnected"
+            self.notify_state_write_rejected(sync_id, reason)
             raise Exception(f"Cannot write synchronized state {sync_id}: connection is {reason}")
         state_sync = self.ensure_state_sync(sync_id)
         if state_sync["status"] == "blocked":
