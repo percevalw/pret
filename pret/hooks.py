@@ -368,11 +368,14 @@ def use_connection_status():
     """
     Subscribe to the current server/client connection status.
 
+    See the [Connection Status tutorial](/tutorials/connection-status) for details.
+
     Returns
     -------
     dict
-        A reactive status object with fields such as ``connected``, ``reason``,
-        ``transport`` and ``kernel_connection_status``.
+        A reactive status object with fields such as `connected`, `reason`,
+        `transport`, `kernel_connection_status`,
+        `state_write_rejection_count` and `last_state_write_rejection`.
     """
 
 

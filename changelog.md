@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased
+## v0.6.3 (2026-05-07)
 
-- Avoid Transcrypt's silent failures by calling it as a subprocess instead of importing it
-- Synchronized stores should now be more effective at blocking writes while disconnected or while sync is blocked and roll back unsaved pending changes on disconnection
-- Such disconnections now trigger a state synchronization upon connection recovery
-- In Jupyter, we now better detect app disconnections by listening to global jupyter service connection failure signals
-- In Jupyter, we should better recover/attach comms on disconnected or already running notebooks
+- Avoid Transcrypt's silent failures by calling it as a subprocess instead of importing it.
+- Synchronized stores should now be more effective at blocking writes while disconnected or while sync is blocked and roll back unsaved pending changes on disconnection.
+- Such disconnections now trigger a state synchronization upon connection recovery.
+- In Jupyter, we now better detect app disconnections by listening to global jupyter service connection failure signals.
+- In Jupyter, we should better recover/attach comms on disconnected or already running notebooks.
 - The `use_connection_status` hook is now notified (`state_write_rejection_count` and `last_state_write_rejection` fields) when the user tries to edit a synchronized state in a disconnected app.
+- `@component` can now be used as a decorator factory (`@component()`) and accepts `memo=True` to wrap the generated React element in `React.memo`.
+- Standalone bundles now store serialized data and generated code separately, and Jupyter bundle transfers now send binary bundle chunks with optional gzip compression : this should make the initial loading of components faster and more reliable in bad network scenarios.
 
 ## v0.6.2 (2026-02-28)
 
