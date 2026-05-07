@@ -159,9 +159,17 @@ def component(fn: Optional[Callable] = None, memo=False):
     Decorator to turn a Python function into a Pret component, that
     will be rendered by React.
 
+    Can be used as `@component` or `@component()`. Pass `memo=True` to
+    memoize the element . This means that if every prop stays identical
+    (as referentially equal) between two consecutive renders, the second
+    render won't call the function and will reuse its last output instead.
+
     Parameters
     ----------
     fn: Optional[Callable]
+        The Python function to turn into a Pret component.
+    memo: bool
+        Whether to memoize the generated React element.
     """
     if fn is None:
         return lambda decorated_fn: component(decorated_fn, memo=memo)
