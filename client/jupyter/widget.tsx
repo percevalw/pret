@@ -127,12 +127,14 @@ export class PretViewWidget extends LuminoWidget {
   }
 
   hideContent() {
+    const hasFullpage = document.getElementById("pret-fullpage-host") !== null;
     if (!this.isVisible && this._isRendered) {
-      ReactDOM.unmountComponentAtNode(this._renderNode);
+      if (!hasFullpage) {
+        ReactDOM.unmountComponentAtNode(this._renderNode);
+      }
       this._isRendered = false;
     }
     if (!this.isVisible && this._fullpageNode) {
-      this._fullpageNode.remove();
       this._fullpageNode = null;
       this._renderNode = this.node;
     }
@@ -141,12 +143,15 @@ export class PretViewWidget extends LuminoWidget {
   dispose() {
     this._unsubscribeReadyChange?.();
     this._unsubscribeReadyChange = null;
+    const hasFullpage = document.getElementById("pret-fullpage-host") !== null;
+
     if (this._isRendered) {
-      ReactDOM.unmountComponentAtNode(this._renderNode);
+      if (!hasFullpage) {
+        ReactDOM.unmountComponentAtNode(this._renderNode);
+      }
       this._isRendered = false;
     }
     if (this._fullpageNode) {
-      this._fullpageNode.remove();
       this._fullpageNode = null;
     }
     super.dispose();
@@ -158,6 +163,9 @@ export class PretViewWidget extends LuminoWidget {
     }
 
     const previousRenderNode = this._renderNode;
+    const existingFullpageNode = document.getElementById(
+      "pret-fullpage-host"
+    ) as HTMLDivElement | null;
     const searchParams = new URLSearchParams(window.location.search);
     let fullpageCellParam = searchParams.get("pret-fullpage-cell");
     if (fullpageCellParam === null) {
@@ -199,9 +207,12 @@ export class PretViewWidget extends LuminoWidget {
       }
       if (cellNode && cellIndex === fullpageCell) {
         if (!this._fullpageNode) {
-          this._fullpageNode = document.createElement("div");
-          this._fullpageNode.className = "pret-fullpage-host";
-          document.body.appendChild(this._fullpageNode);
+          this._fullpageNode =
+            existingFullpageNode ?? document.createElement("div");
+          this._fullpageNode.id = "pret-fullpage-host";
+          if (!document.body.contains(this._fullpageNode)) {
+            document.body.appendChild(this._fullpageNode);
+          }
         }
         shouldUseFullpage = true;
       }
@@ -217,7 +228,9 @@ export class PretViewWidget extends LuminoWidget {
     } else {
       this._renderNode = this.node;
       if (this._fullpageNode) {
-        this._fullpageNode.remove();
+        if (!document.getElementById("pret-fullpage-host")) {
+          this._fullpageNode.remove();
+        }
         this._fullpageNode = null;
       }
     }

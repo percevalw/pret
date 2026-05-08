@@ -3,7 +3,11 @@
     height: 100%;
 }
 
-.pret-fullpage-host {
+#main:has(~ #pret-fullpage-host) {
+    display: none;
+}
+
+#pret-fullpage-host {
     position: fixed;
     inset: 0;
     width: 100vw;
