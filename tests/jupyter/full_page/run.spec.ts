@@ -60,6 +60,7 @@ test.describe("Notebook Tests", () => {
 
     const fullPageHost = page.locator("#pret-fullpage-host");
     await fullPageHost.waitFor({ state: "visible" });
+    await expect(page.locator("body")).toHaveClass(/pret-fullpage/);
 
     const reloadButton = fullPageHost.locator(".pret-restart-app-button");
     await reloadButton.waitFor({ state: "visible" });

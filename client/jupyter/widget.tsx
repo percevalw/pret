@@ -12,6 +12,9 @@ export type PretViewData = {
   chunk_idx: number;
 };
 
+const FULLPAGE_HOST_ID = "pret-fullpage-host";
+const FULLPAGE_BODY_CLASS = "pret-fullpage";
+
 /**
  * A renderer for pret Views with Jupyter (Lumino) framework
  */
@@ -127,7 +130,7 @@ export class PretViewWidget extends LuminoWidget {
   }
 
   hideContent() {
-    const hasFullpage = document.getElementById("pret-fullpage-host") !== null;
+    const hasFullpage = document.getElementById(FULLPAGE_HOST_ID) !== null;
     if (!this.isVisible && this._isRendered) {
       if (!hasFullpage) {
         ReactDOM.unmountComponentAtNode(this._renderNode);
@@ -138,12 +141,16 @@ export class PretViewWidget extends LuminoWidget {
       this._fullpageNode = null;
       this._renderNode = this.node;
     }
+    document.body.classList.toggle(
+      FULLPAGE_BODY_CLASS,
+      document.getElementById(FULLPAGE_HOST_ID) !== null
+    );
   }
 
   dispose() {
     this._unsubscribeReadyChange?.();
     this._unsubscribeReadyChange = null;
-    const hasFullpage = document.getElementById("pret-fullpage-host") !== null;
+    const hasFullpage = document.getElementById(FULLPAGE_HOST_ID) !== null;
 
     if (this._isRendered) {
       if (!hasFullpage) {
@@ -154,6 +161,10 @@ export class PretViewWidget extends LuminoWidget {
     if (this._fullpageNode) {
       this._fullpageNode = null;
     }
+    document.body.classList.toggle(
+      FULLPAGE_BODY_CLASS,
+      document.getElementById(FULLPAGE_HOST_ID) !== null
+    );
     super.dispose();
   }
 
@@ -164,7 +175,7 @@ export class PretViewWidget extends LuminoWidget {
 
     const previousRenderNode = this._renderNode;
     const existingFullpageNode = document.getElementById(
-      "pret-fullpage-host"
+      FULLPAGE_HOST_ID
     ) as HTMLDivElement | null;
     const searchParams = new URLSearchParams(window.location.search);
     let fullpageCellParam = searchParams.get("pret-fullpage-cell");
@@ -209,7 +220,7 @@ export class PretViewWidget extends LuminoWidget {
         if (!this._fullpageNode) {
           this._fullpageNode =
             existingFullpageNode ?? document.createElement("div");
-          this._fullpageNode.id = "pret-fullpage-host";
+          this._fullpageNode.id = FULLPAGE_HOST_ID;
           if (!document.body.contains(this._fullpageNode)) {
             document.body.appendChild(this._fullpageNode);
           }
@@ -228,12 +239,16 @@ export class PretViewWidget extends LuminoWidget {
     } else {
       this._renderNode = this.node;
       if (this._fullpageNode) {
-        if (!document.getElementById("pret-fullpage-host")) {
+        if (!document.getElementById(FULLPAGE_HOST_ID)) {
           this._fullpageNode.remove();
         }
         this._fullpageNode = null;
       }
     }
+    document.body.classList.toggle(
+      FULLPAGE_BODY_CLASS,
+      document.getElementById(FULLPAGE_HOST_ID) !== null
+    );
 
     const Render = () => {
       if (!this.makeView) {
