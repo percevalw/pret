@@ -1,7 +1,7 @@
 let { expect, test } = require("@jupyterlab/galata");
 const path = require("path");
 const fs = require("fs");
-const { createDirectoryResetController } = require("../reset-test-dir");
+const { createDirectoryResetController, setCellSource, addCodeCell } = require("../utils");
 
 // JUPYTERLAB_VERSION is set in run.sh
 if (process.env.JUPYTERLAB_VERSION < "4") {
@@ -61,40 +61,40 @@ test.describe("Notebook Tests", () => {
     const fileName = "file_sync/TodoHTML.ipynb";
     const name = path.basename(fileName);
     await page.notebook.openByPath(fileName);
-    await page.waitForTimeout(1000);
 
     const fileNameBis = "file_sync/TodoHTML2.ipynb";
     const nameBis = path.basename(fileNameBis);
     await page.notebook.openByPath(fileNameBis);
-    await page.waitForTimeout(1000);
 
     await page.notebook.activate(name);
-    await page.waitForTimeout(1000);
-    await page.notebook.setCell(
+    await setCellSource(
+      page,
+      activePanel,
       0,
-      "code",
       "import os\n" +
         `os.environ['SYNC_FILE'] = '${syncFile}'\n` +
         "from todoapp import TodoApp, state  # noqa\n" +
         "TodoApp()"
     );
     await page.notebook.runCell(0, true);
+    await page.waitForTimeout(1000);
     await page.waitForSelector(`${activePanel} .pret-view`);
     await page.waitForSelector(`${activePanel} #faire-à-manger`, {
       state: "attached",
     });
 
     await page.notebook.activate(nameBis);
-    await page.waitForTimeout(1000);
-    await page.notebook.setCell(
+    await setCellSource(
+      page,
+      activePanel,
       0,
-      "code",
       "import os\n" +
         `os.environ['SYNC_FILE'] = '${syncFile}'\n` +
         "from todoapp import TodoApp, state  # noqa\n" +
         "TodoApp()"
     );
     await page.notebook.runCell(0, true);
+    await page.waitForTimeout(1000);
     await page.waitForSelector(`${activePanel} .pret-view`);
     await page.waitForSelector(`${activePanel} #faire-à-manger`, {
       state: "attached",
@@ -127,20 +127,20 @@ test.describe("Notebook Tests", () => {
     expect(await desc.textContent()).toEqual(expectedDescText);
 
     // Check value from python kernel
-    await page.waitForTimeout(1000);
-    await page.notebook.addCell("code", "print(state['faire à manger'])");
+    await addCodeCell(page, activePanel, "print(state['faire à manger'])");
     await page.notebook.runCell(1, true);
     const output = await page.waitForSelector(
       ".jp-Notebook > :nth-child(2) .jp-OutputArea-output pre",
       { state: "attached" }
     );
+    await page.waitForTimeout(1000);
 
     expect(await output.textContent()).toEqual("False\n");
 
     // Edit value from python kernel
-    await page.waitForTimeout(1000);
-    await page.notebook.addCell(
-      "code",
+    await addCodeCell(
+      page,
+      activePanel,
       "state['faire la vaisselle'] = True\n" + "state['faire à manger'] = True"
     );
     await page.notebook.runCell(2, true);

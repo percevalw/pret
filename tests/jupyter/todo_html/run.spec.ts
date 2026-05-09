@@ -1,5 +1,5 @@
 let { expect, test } = require("@jupyterlab/galata");
-const { createDirectoryResetController } = require("../reset-test-dir");
+const { createDirectoryResetController, addCodeCell } = require("../utils");
 
 // JUPYTERLAB_VERSION is set in run.sh
 if (process.env.JUPYTERLAB_VERSION < "4") {
@@ -83,7 +83,11 @@ test.describe("Notebook Tests", () => {
 
     // Check value from python kernel
     await page.waitForTimeout(1000);
-    await page.notebook.addCell("code", "print(state['faire à manger'])");
+    await addCodeCell(
+      page,
+      ".jp-NotebookPanel:not(.lm-mod-hidden)",
+      "print(state['faire à manger'])"
+    );
     await page.notebook.runCell(1, true);
     await page.waitForTimeout(1000);
     const output = await page.waitForSelector(
@@ -95,7 +99,11 @@ test.describe("Notebook Tests", () => {
 
     // Edit value from python kernel
     await page.waitForTimeout(1000);
-    await page.notebook.addCell("code", "state['faire à manger'] = True");
+    await addCodeCell(
+      page,
+      ".jp-NotebookPanel:not(.lm-mod-hidden)",
+      "state['faire à manger'] = True"
+    );
     await page.notebook.runCell(2, true);
     await page.waitForTimeout(1000);
     desc = await page.waitForSelector(".pret-view p", { state: "attached" });

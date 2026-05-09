@@ -1,5 +1,5 @@
 let { expect, test } = require("@jupyterlab/galata");
-const { createDirectoryResetController } = require("../reset-test-dir");
+const { createDirectoryResetController } = require("../utils");
 
 // JUPYTERLAB_VERSION is set in run.sh
 if (process.env.JUPYTERLAB_VERSION < "4") {
@@ -67,13 +67,7 @@ test.describe("Notebook Tests", () => {
     await expect(page.locator("#main")).toBeHidden();
 
     const todoApp = page.locator("#todoapp");
-    try {
-      await todoApp.waitFor({ state: "visible", timeout: 20000 });
-    } catch (e) {
-      await reloadButton.click();
-      await expect(page.locator("#main")).toBeHidden();
-      await todoApp.waitFor({ state: "visible" });
-    }
+    await todoApp.waitFor({ state: "visible"});
 
     await expect(page.locator("#main")).toBeHidden();
     const pageScreenshot = await page.screenshot();

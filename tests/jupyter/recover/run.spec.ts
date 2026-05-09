@@ -2,7 +2,7 @@ let { expect, test } = require("@jupyterlab/galata");
 const path = require("path");
 const fs = require("fs");
 const childProcess = require("child_process");
-const { createDirectoryResetController } = require("../reset-test-dir");
+const { createDirectoryResetController } = require("../utils");
 
 // JUPYTERLAB_VERSION is set in run.sh
 if (process.env.JUPYTERLAB_VERSION < "4") {
@@ -53,77 +53,67 @@ test.afterAll(async () => {
 test.describe("Notebook Tests", () => {
   test("TodoHTML Recover Scenario", async ({ page, tmpPath }) => {
     const activePanel = ".jp-NotebookPanel:not(.lm-mod-hidden)";
-    const executionIndicator = page.locator(
-      `${activePanel} .jp-Notebook-ExecutionIndicator`
-    );
     const fileName = "recover/TodoHTML.ipynb";
     const name = path.basename(fileName);
     await page.notebook.openByPath(fileName);
-    await page.waitForTimeout(1000);
+    const waitForPretConnection = (connected) =>
+      page.waitForFunction(() => {
+        const manager = (window as any).pretManager;
+        return manager?.connectionState?.connected === true;
+      });
 
     await page.notebook.activate(name);
-    await page.waitForTimeout(1000);
-
-    await page.waitForSelector(`${activePanel} .pret-view`);
-    await page.waitForSelector(`${activePanel} .pret-inline-fallback`, {
+    await page.locator(`${activePanel} .pret-view`).waitFor();
+    await page.locator(`${activePanel} .pret-inline-fallback`).waitFor({
       state: "attached",
     });
-    const restartBtn = await page.waitForSelector(
+    const restartBtn = page.locator(
       `${activePanel} .pret-restart-app-button`
     );
-    expect(restartBtn).toBeTruthy();
-    restartBtn.click();
+    await restartBtn.waitFor();
+    await restartBtn.click();
 
     // Check that input checkbox "faire à manger" is present
     await page.notebook.activate(name);
-    await page.waitForSelector(`${activePanel} .pret-view`);
-    await page.waitForSelector(`${activePanel} #faire-à-manger`, {
+    await page.locator(`${activePanel} .pret-view`).waitFor();
+    const activeCheckbox = page.locator(`${activePanel} #faire-à-manger`);
+    await activeCheckbox.waitFor({
       state: "attached",
     });
-    const checkbox = page.locator("#faire-à-manger");
-    expect(checkbox).toBeChecked();
-    let desc = await page.waitForSelector(`${activePanel} .pret-view p`, {
+    await expect(activeCheckbox).toBeChecked();
+    const desc = page.locator(`${activePanel} .pret-view p`);
+    await desc.waitFor({
       state: "attached",
     });
     let expectedDescText = "Number of unfinished todo: 1";
-    expect(await desc.textContent()).toEqual(expectedDescText);
+    await expect(desc).toHaveText(expectedDescText);
 
     // Go offline
-    await expect(executionIndicator).not.toHaveAttribute(
-      "data-status",
-      "disconnected"
-    );
+    await waitForPretConnection(true);
     await page.context().setOffline(true);
-    await page.waitForTimeout(10000);
-    await page.waitForSelector(
-      `${activePanel} .jp-Notebook-ExecutionIndicator[data-status=disconnected], ${activePanel} .jp-Notebook-ExecutionIndicator[data-status=connecting], .jp-Dialog`
+    await waitForPretConnection(false);
+
+    const checkedCheckbox = page.locator(
+      `${activePanel} #faire-à-manger:checked`
     );
-
-    // Try to ncheck the checkbox
-    await checkbox.dispatchEvent("click");
-    await page.waitForTimeout(1000);
-
     // The checkbox was checked before, it should stay checked when we're
     // offline and the user tries to interact with it
-    await page.waitForSelector(`${activePanel} #faire-à-manger:checked`);
-    // Checkbox might be obscured by jupyter connection error popup
-    await checkbox.dispatchEvent("click");
-    await page.waitForTimeout(1000);
-    expect(checkbox).toBeChecked();
+    await checkedCheckbox.waitFor({ state: "attached" });
+
+    await expect(activeCheckbox).toBeChecked();
 
     // Go online
-    // don't check for idle because it doesn't work on chromium, but it should
-    // await expect(executionIndicator).not.toHaveAttribute("data-status", "idle");
     await page.context().setOffline(false);
-    await page.waitForTimeout(10000);
-    await page.waitForSelector(
-      `${activePanel} .jp-Notebook-ExecutionIndicator[data-status=idle]`
-    );
+    await waitForPretConnection(true);
 
     // Uncheck the checkbox
-    await checkbox.dispatchEvent("click");
-    await page.waitForTimeout(1000);
-    await page.waitForSelector(`${activePanel} #faire-à-manger:not(:checked)`);
-    await expect(checkbox).not.toBeChecked();
+    const uncheckedCheckbox = page.locator(
+      `${activePanel} #faire-à-manger:not(:checked)`
+    );
+    await activeCheckbox.evaluate((element) => {
+      (element as HTMLInputElement).click();
+    });
+    await uncheckedCheckbox.waitFor({ state: "attached" });
+    await expect(activeCheckbox).not.toBeChecked();
   });
 });
