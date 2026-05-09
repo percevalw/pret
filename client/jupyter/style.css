@@ -3,7 +3,8 @@
     height: 100%;
 }
 
-#main:has(~ #pret-fullpage-host) {
+/* Hide jupyter main view and modals when full page mode is enabled */
+body.pret-fullpage > #main, body.pret-fullpage > .jp-Dialog {
     display: none;
 }
 
@@ -12,7 +13,6 @@
     inset: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 10001; /* just above jupyter modals */
     overflow: hidden;
     background: var(--jp-layout-color1);
 }

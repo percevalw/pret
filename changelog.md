@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.4 (2026-05-10)
+
+- Fix z-index issue to make Joy popup lists appear in full-page mode, while still keeping jupyter main body and modals hidden
+
 ## v0.6.3 (2026-05-08)
 
 - Avoid Transcrypt's silent failures by calling it as a subprocess instead of importing it.
