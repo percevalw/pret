@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import json
 import mimetypes
 from pathlib import Path
 from typing import Dict, Union
@@ -13,7 +14,7 @@ from quart import (
     websocket,
 )
 
-from pret.manager import get_manager
+from pret.manager import binary_reply, get_manager
 
 
 def make_app(assets: Dict[str, Union[str, Path, bytes]]) -> Quart:
@@ -59,10 +60,19 @@ def make_app(assets: Dict[str, Union[str, Path, bytes]]) -> Quart:
         result = manager.handle_message(method, data)
         if inspect.isawaitable(result):
             result = await result
-        if result is not None:
-            return {"method": result[0], "data": result[1]}
-        else:
+        if result is None:
             return {}
+        binary = binary_reply(result[1].get("value")) if result[0] == "call_success" else None
+        if binary is None:
+            return {"method": result[0], "data": result[1]}
+        # A binary reply is the length of its JSON message, the message and the buffer, decoded by
+        # StandaloneClientManager.send_message
+        message = json.dumps({"method": result[0], "data": {**result[1], "value": binary[0]}}).encode()
+        return Response(
+            len(message).to_bytes(4, "big") + message + b"".join(binary[1]),
+            mimetype="application/octet-stream",
+            headers={"X-Pret-Binary": "1"},
+        )
 
     @app.route("/assets/<path:path>")
     async def page_route(path):
