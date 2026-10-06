@@ -2,9 +2,11 @@ import "regenerator-runtime/runtime";
 import React from "react";
 
 import { ArrayExt, filter, toArray } from "@lumino/algorithm"; /* @ts-ignore */
-import { AttachedProperty } from "@lumino/properties"; /* @ts-ignore */
 import { DisposableDelegate } from "@lumino/disposable"; /* @ts-ignore */
-import { KernelMessage, ServiceManager } from "@jupyterlab/services"; /* @ts-ignore */
+import {
+  KernelMessage,
+  ServiceManager,
+} from "@jupyterlab/services"; /* @ts-ignore */
 import { IDocumentManager } from "@jupyterlab/docmanager"; /* @ts-ignore */
 import { IMainMenu } from "@jupyterlab/mainmenu"; /* @ts-ignore */
 import {
@@ -36,24 +38,23 @@ import { Panel, Widget } from "@lumino/widgets"; /* @ts-ignore */
 import { UUID } from "@lumino/coreutils"; /* @ts-ignore */
 import { CommandRegistry } from "@lumino/commands"; /* @ts-ignore */
 
-import PretJupyterHandler from "./manager";
+import { getPretManager, IPretService, PretService } from "./service";
 import { PretViewWidget } from "./widget";
 
 import "./keep-hidden-cell-output";
-import "./style.css";
+import "../../client/jupyter/style.css";
 
 import "@pret-globals";
 
 const MIMETYPE = "application/vnd.pret+json";
 // // export const notebookIcon = new LabIcon({name: 'ui-components:pret', svgstr: pretSvgstr});
 
-export const contextToPretJupyterHandlerRegistry = new AttachedProperty({
-  name: "widgetManager",
-  create: () => undefined,
-});
 const SETTINGS = { saveState: false };
 const PRET_AUTOSAVE_DELAY_MS = 1500;
-const pendingPretAutosaveByPath = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingPretAutosaveByPath = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
 
 /**
  * Iterate through all pret renderers in a notebook.
@@ -85,13 +86,13 @@ function* chain(...args) {
  */
 function* getLinkedWidgetsFromApp(jupyterApp: JupyterFrontEnd, path: string) {
   const linkedViews = filter(
-    Array.from(jupyterApp.shell.widgets("main")),
+    toArray(jupyterApp.shell.widgets("main")),
     // @ts-ignore
     (w: Widget) => w.id.startsWith("LinkedOutputView-") && w.path === path
   );
   for (const view of toArray(linkedViews)) {
-    for (const outputs of view.children()) {
-      for (const output of outputs.children()) {
+    for (const outputs of toArray(view.children())) {
+      for (const output of toArray(outputs.children())) {
         // TODO: do we need instanceof ?
         if (output instanceof PretViewWidget) {
           yield output;
@@ -185,23 +186,12 @@ export function registerPretJupyterHandler(
   context,
   rendermime: IRenderMimeRegistry,
   renderers: Generator<PretViewWidget>,
-  serviceManager: ServiceManager.IManager,
+  serviceManager: ServiceManager.IManager
 ) {
-  const ensureManager = () => {
-    if (manager) {
-      return manager;
-    }
-    const instance = new PretJupyterHandler(context, serviceManager);
-    // @ts-ignore
-    window.pretManager = instance;
-    contextToPretJupyterHandlerRegistry.set(context, instance);
-    manager = instance;
-    return instance;
-  };
-  let manager = contextToPretJupyterHandlerRegistry.get(context);
+  const manager = getPretManager(context, serviceManager);
 
   for (const r of renderers) {
-    r.manager = ensureManager();
+    r.manager = manager;
   }
 
   // Replace the placeholder widget renderer with one bound to this widget
@@ -213,7 +203,7 @@ export function registerPretJupyterHandler(
       mimeTypes: [MIMETYPE],
       // @ts-ignore
       createRenderer: (options) => {
-        const widget = new PretViewWidget(options, ensureManager());
+        const widget = new PretViewWidget(options, manager);
         const path = context?.path ?? "";
         const pendingAutosave = pendingPretAutosaveByPath.get(path);
         if (pendingAutosave) {
@@ -240,9 +230,6 @@ export function registerPretJupyterHandler(
   return new DisposableDelegate(() => {
     if (rendermime) {
       rendermime.removeMimeType(MIMETYPE);
-    }
-    if (manager) {
-      manager.dispose();
     }
     const path = context?.path ?? "";
     const pendingAutosave = pendingPretAutosaveByPath.get(path);
@@ -300,6 +287,21 @@ export function registerOutputListener(notebook: Notebook, listener) {
   });
 }
 
+// Joy components read the color scheme from `data-theme` on the root element. pret-joy derives it from the
+// JupyterLab theme but always chooses light, so it is set again here whenever the theme or the attribute changes
+function followJupyterTheme() {
+  const sync = () => {
+    const light = document.body.getAttribute("data-jp-theme-light");
+    if (light !== "true" && light !== "false") return;
+    const theme = light === "true" ? "light" : "dark";
+    if (document.documentElement.getAttribute("data-theme") !== theme)
+      document.documentElement.setAttribute("data-theme", theme);
+  };
+  new MutationObserver(sync).observe(document.body, { attributeFilter: ["data-jp-theme-light"] });
+  new MutationObserver(sync).observe(document.documentElement, { attributeFilter: ["data-theme"] });
+  sync();
+}
+
 /*
 Activate the extension:
 -
@@ -316,6 +318,7 @@ async function activatePretExtension(
   //palette: ICommandPalette,
 ) {
   const { commands, shell, contextMenu, serviceManager } = app;
+  followJupyterTheme();
   const pretAreas = new WidgetTracker<MainAreaWidget<PretClonedArea>>({
     namespace: "pret-areas",
   });
@@ -337,10 +340,9 @@ async function activatePretExtension(
       return;
     }
 
-    const wManager = contextToPretJupyterHandlerRegistry[nb.context];
-    // Don't know what it is
-    if (wManager) {
-      wManager.onUnhandledIOPubMessage.connect((sender, msg) => {
+    const kernel = nb.sessionContext.session?.kernel;
+    if (kernel) {
+      kernel.unhandledMessage.connect((sender, msg) => {
         const logger = loggerRegistry.getLogger(nb.context.path);
         let level: LogLevel = "warning";
         if (
@@ -396,7 +398,7 @@ async function activatePretExtension(
           getWidgetsFromNotebook(panel.content),
           getLinkedWidgetsFromApp(app, panel.sessionContext.path)
         ),
-        serviceManager,
+        serviceManager
       );
 
       bindUnhandledIOPubMessageSignal(panel);
@@ -409,11 +411,12 @@ async function activatePretExtension(
           getWidgetsFromNotebook(panel.content),
           getLinkedWidgetsFromApp(app, panel.sessionContext.path)
         ),
-        serviceManager,
+        serviceManager
       );
       bindUnhandledIOPubMessageSignal(panel);
     });
-    notebookTracker.currentChanged.connect((sender, panel: NotebookPanel) => {
+    notebookTracker.currentChanged.connect((sender, panel: NotebookPanel | null) => {
+      if (!panel) return;
       registerOutputListener(panel.content, (path, index) => {
         (commands as CommandRegistry).execute("pret:create-view", {
           path,
@@ -524,7 +527,10 @@ async function activatePretExtension(
     execute: async (args) => {
       const path = args.path as string | undefined | null;
       const current = path
-        ? ((docManager.findWidget(path, "Notebook") as any) as NotebookPanel | null)
+        ? (docManager.findWidget(
+            path,
+            "Notebook"
+          ) as any as NotebookPanel | null)
         : notebookTracker.currentWidget;
       if (!current) {
         throw new Error("No active notebook found.");
@@ -634,14 +640,14 @@ async function activatePretExtension(
     isEnabled: isEnabledAndSingleSelected,
   });
 
-  return null;
+  return new PretService(serviceManager);
 }
 
 function updateSettings(settings) {
   SETTINGS.saveState = !!settings.get("saveState").composite;
 }
 
-const plugin: JupyterFrontEndPlugin<null> = {
+const plugin: JupyterFrontEndPlugin<IPretService> = {
   id: "pret:plugin", // app
   requires: [
     IRenderMimeRegistry, // rendermime
@@ -655,6 +661,7 @@ const plugin: JupyterFrontEndPlugin<null> = {
     ILayoutRestorer, // restorer
   ],
   activate: activatePretExtension,
+  provides: IPretService,
   autoStart: true,
 };
 
