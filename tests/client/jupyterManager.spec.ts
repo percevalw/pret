@@ -151,7 +151,7 @@ test("Jupyter manager shares comms and ignores late discovery after release", as
     };
     const context = { sessionContext: { session: { kernel }, ready: Promise.resolve(), kernelChanged: new Signal() } };
     const services = { connectionFailure: new Signal() };
-    return { kernel, context, services, manager: new Manager(context, services) };
+    return { kernel, context, services, manager: new Manager(context.sessionContext, services) };
   }
 
   const { kernel, manager, context, services } = session();

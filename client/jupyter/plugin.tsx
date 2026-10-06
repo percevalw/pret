@@ -188,7 +188,7 @@ export function registerPretJupyterHandler(
   renderers: Generator<PretViewWidget>,
   serviceManager: ServiceManager.IManager
 ) {
-  const manager = getPretManager(context, serviceManager);
+  const manager = getPretManager(context.sessionContext, serviceManager);
 
   for (const r of renderers) {
     r.manager = manager;

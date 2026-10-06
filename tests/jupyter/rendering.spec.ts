@@ -53,3 +53,14 @@ RemainingTodoCounter(state=state)`,
   await checkbox.click();
   await expect(page.locator("#remaining-todo-counter")).toHaveText("Number of unfinished todos: 0.");
 });
+
+test("async effects rerun and receive server function bytes as a Uint8Array", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openNotebook(page, "Effects.ipynb", ["from effect_app import KernelBytes\nKernelBytes()"], { run: true });
+  const received = page.locator(`${panel} #kernel-bytes`);
+  await expect(received).toHaveText("2 bytes 1 255");
+  await page.locator(`${panel} #next-count`).click();
+  await expect(received).toHaveText("2 bytes 2 255");
+  expect(errors.filter((message) => !message.includes("debugger"))).toEqual([]);
+});

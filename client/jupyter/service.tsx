@@ -18,23 +18,16 @@ export interface IPretService {
 
 export const IPretService = new Token<IPretService>("pret:service");
 
-type PretContext = {
-  sessionContext: ISessionContext;
-  path?: string;
-  save?: () => Promise<void>;
-};
-
 const managers = new WeakMap<ISessionContext, PretJupyterHandler>();
 
 // Reuse the same Jupyter connection for notebook outputs and extension views
 export function getPretManager(
-  context: PretContext,
+  sessionContext: ISessionContext,
   serviceManager: ServiceManager.IManager
 ): PretJupyterHandler {
-  const sessionContext = context.sessionContext;
   let manager = managers.get(sessionContext);
   if (!manager) {
-    manager = new PretJupyterHandler(context, serviceManager);
+    manager = new PretJupyterHandler(sessionContext, serviceManager);
     managers.set(sessionContext, manager);
     sessionContext.disposed.connect(() => {
       manager?.dispose();
@@ -98,7 +91,7 @@ export class PretService implements IPretService {
   constructor(private serviceManager: ServiceManager.IManager) {}
 
   createHost(sessionContext: ISessionContext, node: HTMLElement): IPretHost {
-    const manager = getPretManager({ sessionContext }, this.serviceManager);
+    const manager = getPretManager(sessionContext, this.serviceManager);
     return new PretHost(manager, node);
   }
 }

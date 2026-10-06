@@ -1,16 +1,10 @@
 import "regenerator-runtime/runtime";
 import React from "react";
 
-// @ts-ignore
-// @ts-ignore
 import { IComm, IKernelConnection } from "@jupyterlab/services/lib/kernel/kernel";
-// @ts-ignore
 import { IChangedArgs } from "@jupyterlab/coreutils";
-// @ts-ignore
 import { ISessionContext } from "@jupyterlab/apputils/lib/sessioncontext";
-// @ts-ignore
 import { ServiceManager } from "@jupyterlab/services";
-// @ts-ignore
 import * as KernelMessage from "@jupyterlab/services/lib/kernel/messages";
 
 import useSyncExternalStoreExports from "use-sync-external-store/shim";
@@ -106,7 +100,6 @@ const maybeDecompressBytes = async (
 React.useSyncExternalStore = useSyncExternalStoreExports.useSyncExternalStore;
 
 export default class PretJupyterHandler {
-  private context: {sessionContext: ISessionContext; path?: string; save?: () => Promise<void>};
   private readonly commTargetName: string;
 
   private comm: IComm;
@@ -137,12 +130,8 @@ export default class PretJupyterHandler {
   ) => this.handleKernelChanged(args);
   private connectionFailed = (_sender: ServiceManager.IManager, error: Error) => this.handleConnectionFailure(error);
 
-  constructor(
-    context: {sessionContext: ISessionContext; path?: string; save?: () => Promise<void>},
-    private serviceManager: ServiceManager.IManager
-  ) {
+  constructor(private sessionContext: ISessionContext, private serviceManager: ServiceManager.IManager) {
     this.commTargetName = "pret";
-    this.context = context;
     this.comm = null;
     this.unpack = makeLoadApp();
     this.appManager = null;
@@ -166,14 +155,14 @@ export default class PretJupyterHandler {
       lastError: null,
     };
 
-    context.sessionContext.kernelChanged.connect(this.kernelChanged);
+    sessionContext.kernelChanged.connect(this.kernelChanged);
     serviceManager.connectionFailure.connect(this.connectionFailed);
 
-    if (context?.sessionContext.session?.kernel) {
+    if (sessionContext.session?.kernel) {
       this.handleKernelChanged({
         name: "kernel",
         oldValue: null,
-        newValue: context.sessionContext.session?.kernel,
+        newValue: sessionContext.session.kernel,
       });
     }
 
@@ -234,7 +223,7 @@ export default class PretJupyterHandler {
 
   private getKernelConnectionStatus = (): string | null => {
     return (
-      this.context?.sessionContext?.session?.kernel?.connectionStatus ?? null
+      this.sessionContext.session?.kernel?.connectionStatus ?? null
     );
   };
 
@@ -487,8 +476,8 @@ export default class PretJupyterHandler {
       const message = String(e?.message ?? e);
       const error: any = e instanceof Error ? e : new Error(message);
       const disconnected =
-        this.context?.sessionContext?.session?.kernel?.connectionStatus &&
-        this.context.sessionContext.session.kernel.connectionStatus !==
+        this.sessionContext.session?.kernel?.connectionStatus &&
+        this.sessionContext.session.kernel.connectionStatus !==
           "connected";
       if (!error.code) {
         error.code = disconnected
@@ -523,7 +512,7 @@ export default class PretJupyterHandler {
     console.info("PRET: Attached comm", {
       target: this.commTargetName,
       commId: comm.commId,
-      kernelId: this.context?.sessionContext.session?.kernel?.id ?? null,
+      kernelId: this.sessionContext.session?.kernel?.id ?? null,
       waitingForBackendOpen: options.failIfClosedBeforeBackendOpen === true,
     });
     this.comm.onClose = () => {
@@ -538,9 +527,9 @@ export default class PretJupyterHandler {
           {
             target: this.commTargetName,
             commId: comm.commId,
-            kernelId: this.context?.sessionContext.session?.kernel?.id ?? null,
+            kernelId: this.sessionContext.session?.kernel?.id ?? null,
             kernelStatus:
-              this.context?.sessionContext.session?.kernel?.connectionStatus ?? null,
+              this.sessionContext.session?.kernel?.connectionStatus ?? null,
           }
         );
         const err = this.makeKernelDownError();
@@ -584,7 +573,7 @@ export default class PretJupyterHandler {
     console.info("PRET: Backend comm opened", {
       target: this.commTargetName,
       commId: comm.commId,
-      kernelId: this.context?.sessionContext.session?.kernel?.id ?? null,
+      kernelId: this.sessionContext.session?.kernel?.id ?? null,
       messageType: msg?.header?.msg_type ?? null,
     });
     this.pendingBackendOpenComm = null;
@@ -596,7 +585,7 @@ export default class PretJupyterHandler {
    * Get the currently-registered comms.
    */
   getCommInfo = async (): Promise<any> => {
-    let kernel = this.context?.sessionContext.session?.kernel;
+    let kernel = this.sessionContext.session?.kernel;
     if (!kernel) {
       throw new Error("No current kernel");
     }
@@ -621,7 +610,7 @@ export default class PretJupyterHandler {
   };
 
   private attachCommFromInfo = (allCommIds: any): boolean => {
-    const kernel = this.context?.sessionContext.session?.kernel;
+    const kernel = this.sessionContext.session?.kernel;
     if (!kernel) {
       return false;
     }
@@ -697,21 +686,13 @@ export default class PretJupyterHandler {
       if (!this.connectionState.connected) await this.confirmCommAlive("recovery");
       return;
     }
-    if (!this.context?.sessionContext) {
-      console.warn("PRET: No session context");
-      this.markDisconnected({
-        reason: "missing_session_context",
-        kernelConnectionStatus: null,
-      });
-      return;
-    }
     console.info("PRET: Awaiting session to be ready");
-    await this.context.sessionContext.ready;
+    await this.sessionContext.ready;
     if (generation !== this.generation || this.comm) {
       return;
     }
 
-    if (this.context?.sessionContext.session?.kernel?.handleComms === false) {
+    if (this.sessionContext.session?.kernel?.handleComms === false) {
       console.warn("PRET: Comms are disabled");
       this.markDisconnected({
         reason: "comms_disabled",
@@ -829,12 +810,11 @@ export default class PretJupyterHandler {
     }
     if (msgContent?.method === "call_success") {
       const value = (msgContent.data as any)?.value;
+      // Raw bytes, e.g. a PDF returned by a server_only function, become the value, see binary_reply in manager.py
       if (value?.__pret_binary__ === true) {
-        const { __pret_binary__, ...metadata } = value;
-        (msgContent.data as any).value = {
-          ...metadata,
-          bytes: toUint8Array(msg.buffers?.[0]),
-        };
+        const { __pret_binary__, __pret_bytes__, ...metadata } = value;
+        const bytes = toUint8Array(msg.buffers?.[0]);
+        (msgContent.data as any).value = __pret_bytes__ ? bytes : { ...metadata, bytes };
       }
     }
     try {
@@ -950,8 +930,8 @@ export default class PretJupyterHandler {
         `Timed out while waiting for PRET bundle response for ${marshalerId}.`
       );
       const disconnected =
-        this.context?.sessionContext?.session?.kernel?.connectionStatus &&
-        this.context.sessionContext.session.kernel.connectionStatus !==
+        this.sessionContext.session?.kernel?.connectionStatus &&
+        this.sessionContext.session.kernel.connectionStatus !==
           "connected";
       error.code = disconnected ? "PRET_JUPYTER_DOWN" : "PRET_BUNDLE_TIMEOUT";
       if (disconnected) {
@@ -976,7 +956,7 @@ export default class PretJupyterHandler {
       });
     this.bundleInFlight.set(marshalerId, inflight);
 
-    if (!this.context?.sessionContext.session?.kernel) {
+    if (!this.sessionContext.session?.kernel) {
       this.bundleRequests.delete(requestId);
       this.bundleInFlight.delete(marshalerId);
       clearTimeout(timeout);
