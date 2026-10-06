@@ -2,8 +2,13 @@ const webpack = require("webpack");
 const path = require("path");
 
 module.exports = {
+  ...(process.env.PRET_COVERAGE ? { devtool: "inline-source-map" } : {}),
   module: {
     rules: [
+      // Carry the library build maps back to TypeScript in coverage assets
+      ...(process.env.PRET_COVERAGE ? [{
+        test: /\.js$/, enforce: "pre", use: "source-map-loader", exclude: /node_modules/,
+      }] : []),
       { test: /\.wasm$/, type: "asset/resource" },
       {
         test: /\.[jt]sx?$/,
@@ -41,7 +46,8 @@ module.exports = {
     })
   ],
   optimization: {
-    usedExports: true
+    usedExports: !process.env.PRET_COVERAGE,
+    minimize: process.env.PRET_COVERAGE ? false : undefined,
   },
   cache: {
     type: "filesystem"

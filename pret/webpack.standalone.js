@@ -3,7 +3,7 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 module.exports = (env) => ({
     entry: env.pretGlobalsFile,
-    devtool: 'eval-source-map',
+    devtool: process.env.PRET_COVERAGE ? 'inline-source-map' : 'eval-source-map',
     module: {
         rules: [
             {
@@ -64,7 +64,8 @@ module.exports = (env) => ({
         }),
     ],
     optimization: {
-        usedExports: true,
+        usedExports: !process.env.PRET_COVERAGE,
+        minimize: process.env.PRET_COVERAGE ? false : undefined,
     },
     cache: {
         type: 'filesystem',
