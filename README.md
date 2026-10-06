@@ -6,7 +6,9 @@
 
 # PRET
 
-Pret is a library for building full-stack reactive user interfaces in Python, using React as a rendering engine.
+Pret lets you build interactive interfaces in Python, inside notebooks or as standalone web applications.
+Use a Store to share data between components, connect edits to Python and save your work.
+The interface runs in the browser using React.
 
 ## Installation
 
@@ -179,3 +181,72 @@ Then, run the following command, and voilà !
 ```bash
 python app.py
 ```
+
+
+## Tables and saved work
+
+A Store can contain ordinary Python values and DataFrames. Add a pandas table to work on an editable
+copy, or a Spark or Ibis query to browse its source. Connected widgets request rows as needed.
+
+`save_store(store, "review.pret")` creates a SQLite file and returns a Store whose subsequent edits
+are saved automatically. `load_store("review.pret")` reopens it, including the saved table rows.
+
+- [Work with DataFrames](https://percevalw.github.io/pret/latest/tutorials/dataframes/), from pandas to external queries
+- [Save and reopen your work](https://percevalw.github.io/pret/latest/tutorials/saving-stores/), including shared files
+- [Inside a Store file](https://percevalw.github.io/pret/latest/under-the-hood/store-files/), what a `.pret` file contains and why it is SQLite
+- [How widgets query DataFrames](https://percevalw.github.io/pret/latest/under-the-hood/dataframe-queries/), paging, previews and custom sources
+
+## Tests
+
+Run from the Pret checkout with Python 3.10 or 3.11, Node 22, `.[testing]` installed and built Pret assets
+
+```sh
+python -m pret.testing run
+python -m pret.testing run --suite python --match persistence
+python -m pret.testing run --suite client
+python -m pret.testing run --suite jupyter --browser firefox
+```
+
+| Group | Location | Checks |
+| --- | --- | --- |
+| Python | `tests/python/test_*.py` | Persistence, DataFrame queries and exact types, database history, serialization |
+| Client | `tests/client/*.spec.ts` | Cache and failure handling, browser Arrow and SQLite conversions, standalone editing |
+| JupyterLab | `tests/jupyter/*.spec.ts` | Rendering, Store edits and undo, saved data between views, rejected edits, full page display |
+
+The client and JupyterLab groups use Playwright. Each JupyterLab case starts a fresh server, kernels and workspace,
+using small Pret application fixtures. Successful workspaces are removed, failed cases keep logs, screenshots and traces
+in `test-results/attempts`. `--match` accepts a pytest expression or a Playwright title regular expression.
+Repeat `--browser` to select multiple browsers, Chromium is the default and WebKit is optional.
+CI runs Python 3.10 and 3.11 with JupyterLab 3 and 4 on Chromium and Firefox, including SQLite and Spark checks.
+
+## Test coverage
+
+Coverage uses the same cases and assertions. Build source maps first, then run with Python 3.11, JupyterLab 4 and Chromium
+
+```sh
+npm install
+uv pip install 'jupyterlab>=3.6,<4' hatchling hatch-jupyter-builder 'setuptools<82'
+PRET_COVERAGE=1 uv pip install --no-build-isolation -e '.[coverage]'
+uv pip install 'jupyterlab>=4.4,<4.5' 'ibis-framework[sqlite,pyspark]>=12,<13' 'pyspark>=3.5,<4'
+npx playwright install chromium
+python -m pret.testing run --coverage
+```
+
+Spark checks need Java 17. The extension build uses JupyterLab 3 to match its builder dependencies.
+Open `coverage/combined/index.html`. The Python, browser and Node reports use the same source inventory,
+including untouched files. Covered lines show their test, runtime, attempt and result.
+
+```sh
+python -m pret.testing run --coverage --suite jupyter --match rendering --output coverage/rendering
+python -m pret.testing report --output coverage
+python -m pret.testing report --output coverage --passing-only --contexts '^browser\|'
+```
+
+Reports include failed tests by default. Regeneration uses saved sources and raw ranges without rerunning tests,
+and rejects changed source content. `coverage.json` contains line contexts, `collection.json` lists exclusions and
+collection errors. Test failures and incomplete collection fail the command, percentages are informational.
+
+Coverage measures original Python, JavaScript, TypeScript and literal JavaScript overrides inside Python files.
+Dynamic JavaScript has generated source entries with its originating call site in `report-inventory.json`.
+Dependencies, compiler helpers and bytecode reconstructed functions are excluded. Notebook functions without source
+files execute normally but are excluded from file coverage. Use a normal package build to restore assets without maps.
