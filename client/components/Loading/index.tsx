@@ -1,5 +1,5 @@
 import React from "react";
-import './style.css'
+import '../../../client/components/Loading/style.css'
 
 export default () => (
     <div style={{'minHeight': '80px', 'minWidth': '80px'}}>

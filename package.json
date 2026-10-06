@@ -1,15 +1,17 @@
 {
   "name": "pret",
-  "main": "client/index.tsx",
+  "main": "lib/index.js",
+  "types": "client/index.d.ts",
   "version": "0.6.4",
   "scripts": {
+    "build:lib": "tsc -p tsconfig.lib.json",
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
     "build:dev": "jlpm clean && jlpm build:standalone:dev && jlpm build:jupyter:dev",
     "build:standalone": "webpack --config webpack/webpack.config.js --mode development",
     "build:standalone:dev": "webpack --config webpack/webpack.config.js --mode development",
-    "build:jupyter": "jupyter labextension build --development True .",
-    "build:jupyter:dev": "jupyter labextension build --development True .",
-    "clean": "rm -rf pret/js-extension pret/js-base"
+    "build:jupyter": "jlpm build:lib && jupyter labextension build --development True .",
+    "build:jupyter:dev": "jlpm build:lib && jupyter labextension build --development True .",
+    "clean": "rm -rf lib pret/js-extension pret/js-base"
   },
   "peerDependencies": {
     "@jupyterlab/application": "",
@@ -32,18 +34,23 @@
     "react-dom": ">=17.0.2"
   },
   "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.53.4-build1",
+    "apache-arrow": "^18.1.0",
     "css-loader": "^6.7.3",
     "node-fetch": "^3.3.2",
     "react-router": "^6.4",
     "react-router-dom": "^6.4",
     "regenerator-runtime": "^0.13.11",
     "style-loader": "^3.3.2",
-    "use-sync-external-store": "^1.2.0",
-    "yjs": "^13.6.27"
+    "use-sync-external-store": "^1.2.0"
   },
   "devDependencies": {
+    "@jupyterlab/application": "^3.6.8",
     "@jupyterlab/builder": "^3.6.3",
     "@jupyterlab/galata": "5",
+    "@jupyterlab/logconsole": "^3.6.8",
+    "@jupyterlab/notebook": "^3.6.8",
+    "@types/use-sync-external-store": "^0.0.6",
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
     "old-galata": "npm:@jupyterlab/galata@4.5.8",
@@ -59,10 +66,15 @@
     "webpack-cli": "^5.1.4"
   },
   "jupyterlab": {
-    "extension": "client/jupyter/plugin",
+    "extension": "lib/jupyter/plugin",
     "schemaDir": "client/jupyter/schema",
     "outputDir": "pret/js-extension",
-    "webpackConfig": "./webpack/webpack.jupyter.js"
+    "webpackConfig": "./webpack/webpack.jupyter.js",
+    "sharedPackages": {
+      "pret": {
+        "singleton": true
+      }
+    }
   },
   "prettier": {},
   "browserslist": {

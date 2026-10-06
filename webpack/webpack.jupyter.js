@@ -4,6 +4,7 @@ const path = require("path");
 module.exports = {
   module: {
     rules: [
+      { test: /\.wasm$/, type: "asset/resource" },
       {
         test: /\.[jt]sx?$/,
         use: "ts-loader",

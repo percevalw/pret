@@ -8,6 +8,7 @@ module.exports = (env) => ({
   devtool: "eval-source-map",
   module: {
     rules: [
+      { test: /\.wasm$/, type: "asset/resource" },
       {
         test: /\.[jt]sx?$/,
         use: "ts-loader",
