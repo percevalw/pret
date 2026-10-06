@@ -1976,6 +1976,18 @@ export var DeprecationWarning =  _class_ ('DeprecationWarning', [Warning], {
 export var RuntimeWarning =  _class_ ('RuntimeWarning', [Warning], {
 	__module__: __name__,
 });
+export var __compare__ = function (a, b) {
+	if (Array.isArray (a) && Array.isArray (b)) {
+		for (var i = 0; i < Math.min (a.length, b.length); i++) {
+			var result = __compare__ (a [i], b [i]);
+			if (result != 0) {
+				return result;
+			}
+		}
+		return (a.length < b.length ? -(1) : (a.length > b.length ? 1 : 0));
+	}
+	return (a < b ? -(1) : (a > b ? 1 : 0));
+};
 export var __sort__ = function (iterable, key, reverse) {
 	if (arguments.length) {
 		var __ilastarg0__ = arguments.length - 1;
@@ -1998,30 +2010,12 @@ export var __sort__ = function (iterable, key, reverse) {
 	if (typeof reverse == 'undefined' || (reverse != null && reverse.hasOwnProperty ("__kwargtrans__"))) {;
 		var reverse = false;
 	};
+	var sign = (reverse ? -(1) : 1);
 	if (key) {
-		iterable.sort ((function __lambda__ (a, b) {
-			if (arguments.length) {
-				var __ilastarg0__ = arguments.length - 1;
-				if (arguments [__ilastarg0__] && arguments [__ilastarg0__].hasOwnProperty ("__kwargtrans__")) {
-					var __allkwargs0__ = arguments [__ilastarg0__--];
-					for (var __attrib0__ in __allkwargs0__) {
-						switch (__attrib0__) {
-							case 'a': var a = __allkwargs0__ [__attrib0__]; break;
-							case 'b': var b = __allkwargs0__ [__attrib0__]; break;
-						}
-					}
-				}
-			}
-			else {
-			}
-			return (key (a) > key (b) ? 1 : -(1));
-		}));
+		iterable.sort ((a, b) => sign * __compare__ (key (a), key (b)));
 	}
 	else {
-		iterable.sort ((a, b) => (a > b ? 1 : -(1)));
-	}
-	if (reverse) {
-		iterable.reverse ();
+		iterable.sort ((a, b) => sign * __compare__ (a, b));
 	}
 };
 export var sorted = function (iterable, key, reverse) {
