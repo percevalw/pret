@@ -7,9 +7,9 @@
     "build:lib": "tsc -p tsconfig.lib.json",
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
     "build:dev": "jlpm clean && jlpm build:standalone:dev && jlpm build:jupyter:dev",
-    "build:standalone": "webpack --config webpack/webpack.config.js --mode development",
+    "build:standalone": "webpack --config webpack/webpack.config.js --mode production",
     "build:standalone:dev": "webpack --config webpack/webpack.config.js --mode development",
-    "build:jupyter": "jlpm build:lib && jupyter labextension build --development True .",
+    "build:jupyter": "jlpm build:lib && jupyter labextension build .",
     "build:jupyter:dev": "jlpm build:lib && jupyter labextension build --development True .",
     "clean": "rm -rf lib pret/js-extension pret/js-base"
   },
