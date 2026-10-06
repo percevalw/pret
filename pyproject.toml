@@ -48,6 +48,8 @@ pret = "pret.cli:app"
 # ----- Development configuration -----
 [project.optional-dependencies]
 legacy = ["pret-pycrdt>=0.12.44-post2"]
+testing = ["pret[legacy]", "pytest>=8", "pytest-asyncio", "coverage>=7.10,<8", "pytest-cov>=7,<8", "tomli; python_version < '3.11'"]
+coverage = ["pret[testing]"]
 joy = [
     "pret-joy",
 ]
@@ -142,3 +144,6 @@ transcrypt = { path = "./vendor/transcrypt", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
+
+[tool.pret.testing]
+python = ["tests/python"]

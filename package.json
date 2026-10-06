@@ -45,15 +45,21 @@
     "use-sync-external-store": "^1.2.0"
   },
   "devDependencies": {
+    "@jridgewell/gen-mapping": "^0.3.13",
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@jupyterlab/application": "^3.6.8",
     "@jupyterlab/builder": "^3.6.3",
-    "@jupyterlab/galata": "5",
+    "@jupyterlab/galata": "5.5.11",
     "@jupyterlab/logconsole": "^3.6.8",
     "@jupyterlab/notebook": "^3.6.8",
+    "@playwright/test": "1.62.1",
     "@types/use-sync-external-store": "^0.0.6",
+    "esbuild": "^0.25.12",
     "file-loader": "^6.2.0",
     "html-webpack-plugin": "^5.5.1",
-    "old-galata": "npm:@jupyterlab/galata@4.5.8",
+    "istanbul-lib-instrument": "^6.0.3",
+    "old-galata": "npm:@jupyterlab/galata@^4.5.8",
+    "playwright": "1.62.1",
     "prettier": "^2.8.8",
     "process": "^0.11.10",
     "react": "^17.0.2",
@@ -62,8 +68,10 @@
     "string-replace-loader": "^3.1.0",
     "ts-loader": "^9.4.2",
     "typescript": "^5.8.2",
+    "v8-to-istanbul": "^9.3.0",
     "webpack": "^5.93.0",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "jsdom": "^20.0.3"
   },
   "jupyterlab": {
     "extension": "lib/jupyter/plugin",
@@ -88,5 +96,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "overrides": {
+    "@playwright/test": "1.62.1",
+    "playwright": "1.62.1",
+    "playwright-core": "1.62.1"
   }
 }
