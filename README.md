@@ -6,7 +6,9 @@
 
 # PRET
 
-Pret is a library for building full-stack reactive user interfaces in Python, using React as a rendering engine.
+Pret lets you build interactive interfaces in Python, inside notebooks or as standalone web applications.
+Use a Store to share data between components, connect edits to Python and save your work.
+The interface runs in the browser using React.
 
 ## Installation
 
