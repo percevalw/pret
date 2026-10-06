@@ -280,18 +280,22 @@ def use_effect(effect: "Callable" = None, dependencies: "Optional[List]" = None)
     ----------
     effect: Callable
         A function containing the side effect logic.
-        It can optionally return a cleanup function.
+        It can optionally return a cleanup function, an async function starts its work and has no cleanup.
     dependencies: Optional[List]
         An optional array of dependencies that determines when the effect runs.
     """
-    if effect is None:
 
-        def decorator(func):
-            return window.React.useEffect(func, dependencies)  # noqa: F821
+    def register(func):
+        def run():
+            cleanup = func()
+            # An async effect returns a Promise, which React would call as its cleanup, only functions are kept
+            # and the implicit return gives React undefined rather than null
+            if callable(cleanup):
+                return cleanup
 
-        return decorator
-    # TODO: add window to scoped variables as `js`
-    return window.React.useEffect(effect, dependencies)  # noqa: F821
+        return window.React.useEffect(run, dependencies)  # noqa: F821
+
+    return register if effect is None else register(effect)
 
 
 def use_body_style(styles):
