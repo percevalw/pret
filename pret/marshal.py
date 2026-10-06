@@ -15,10 +15,10 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import types
 import uuid
-import weakref
 from asyncio import Future
 from io import BytesIO
 from pathlib import Path
@@ -38,7 +38,10 @@ except ImportError:
 ModuleType = type(sys)
 BuiltinFunctionType = type(time.time)
 marshal_overrides = WeakKeyDictionary()
+coverage_js_origins = WeakKeyDictionary()
 _current_marshaller: Optional["PretMarshaler"] = None
+# The test runner sets this directory to map generated browser code back to Python and JS sources
+COVERAGE = bool(os.environ.get("PRET_COVERAGE_DIR"))
 
 
 def marshal_as(
@@ -47,6 +50,15 @@ def marshal_as(
     js: str = None,
     globals: Union[dict, Callable[[], Dict]] = {},
 ):
+    if js is not None and COVERAGE:
+        from .testing.sources import js_origin
+
+        caller = inspect.currentframe().f_back
+        origin = js_origin(js, caller.f_code.co_filename, caller.f_lineno)
+        del caller
+    else:
+        origin = None
+
     @functools.wraps(marshal_as)
     def wrap(fn):
         assert fn is not None
@@ -61,6 +73,8 @@ def marshal_as(
                 scoped_vars = globals
             marshalable = ("js", js, scoped_vars)
         marshal_overrides[fn] = marshalable
+        if origin is not None:
+            coverage_js_origins[fn] = origin
         return fn
 
     if base_version is None:
@@ -80,8 +94,15 @@ class GlobalRef:
 
     def __reduce__(self):
         global _current_marshaller
-        # str is interpreted by pickle as save global, which is exactly what we want
         _current_marshaller.accessed_global_refs.add(self)
+        package_name = getattr(self.module, "_js_package_name", None)
+        if package_name is not None:
+            return resolve_stub_component, (
+                package_name,
+                self.module._js_global_name,
+                self.name,
+            )
+        # Returning a string tells pickle to reference the function by name
         return self.__module__ + "." + self.name
 
     def __hash__(self):
@@ -96,6 +117,44 @@ class GlobalRef:
 
 js = ModuleType("js", None)
 marshal_as(js, js="return window.pret_modules.js")
+
+
+@marshal_as(
+    js="""
+return function resolve_stub_component(package_name, global_name, component_name) {
+    var componentModule = window.pret_modules.components?.get(package_name);
+    if (!componentModule && window[global_name]) {
+        componentModule = window[global_name];
+        window.pret_modules.components.set(package_name, componentModule);
+    }
+    if (!componentModule) {
+        var registered = Array.from(
+            window.pret_modules.components?.keys?.() || []
+        ).join(', ');
+        throw new Error(
+            'PRET component package ' + package_name
+            + ' is not registered, available packages: ' + registered
+        );
+    }
+    var component = componentModule;
+    for (var part of component_name.split('.')) {
+        component = component?.[part];
+    }
+    if (component === undefined) {
+        throw new Error(
+            'PRET component ' + package_name + '.' + component_name
+            + ' is not registered'
+        );
+    }
+    return component;
+};
+"""
+)
+def resolve_stub_component(package_name, global_name, component_name):
+    """
+    Find the registered React component when the browser loads a serialized Python component
+    """
+    raise RuntimeError(f"Frontend component {package_name}.{component_name} is unavailable in Python")
 
 
 def make_stub_js_module(
@@ -120,11 +179,20 @@ def make_stub_js_module(
     module.__file__ = f"<{full_global_name}>"
     module.__getattr__ = make_stub_js_function
     module._js_package_name = js_package_name
+    module._js_global_name = global_name
     module._package_name = py_package_name
     module._package_version = package_version
     module._stub_qualified_name = stub_qualified_name
     sys.modules[module.__name__] = module
-    marshal_as(module, js=f"return pret_modules.js.{global_name};")
+    marshal_as(
+        module,
+        js=(
+            f"var componentModule = pret_modules.components?.get('{js_package_name}');\n"
+            f"if (!componentModule) throw new Error("
+            f"'PRET component package {js_package_name} is not registered');\n"
+            "return componentModule;"
+        ),
+    )
     setattr(js, global_name, module)
     return module
 
@@ -269,9 +337,7 @@ class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
                 # If we have a py marshalable, we can use it directly
                 self._encoders[base] = self._encoders[marshaled[1]]
 
-    def _find_encoder(
-        self, obj_type: type
-    ) -> "Callable[[cbor2_encoder.CBOREncoder, Any], None] | None":
+    def _find_encoder(self, obj_type: type) -> "Callable[[cbor2_encoder.CBOREncoder, Any], None] | None":
         for type_or_tuple, enc in list(self._encoders.items()):
             if type(type_or_tuple) is tuple:
                 try:
@@ -307,25 +373,28 @@ class StrictCBOREncoder(cbor2_encoder.CBOREncoder):
         if not encoder:
             raise cbor2_encoder.CBOREncodeTypeError(f"cannot serialize type {obj_type.__name__}")
 
-        try:
-            encoder(self, obj)
-        except BaseException as e:
-            if isinstance(obj, cbor2_encoder.CBORTag):
-                raise Exception("Could not encode {}".format(repr(obj.value))) from e
-            raise
+        encoder(self, obj)
 
 
 class PretMarshaler:
     def __init__(self, allow_error: bool = False):
         self.source_codes = {}
+        self.coverage_origins = {}
+        self.coverage_excluded = []
         self.allow_error = allow_error
         self.accessed_global_refs = set()
         self.encoder = cbor2_encoder.shareable_encoder(self._encoder)
         self.id = uuid.uuid4().hex
         self.chunk_idx = 0
+        self.serialization_lock = threading.RLock()
         self._file = BytesIO()
         self._cbor_encoder = StrictCBOREncoder(self._file, default=self.encoder, value_sharing=True)
         self._serialized_bytes_cache: Optional[Tuple[bytes, str]] = None
+        # Factory ids by their code, functions created again with identical code, such as the closures of a
+        # view rendered again in the same kernel, reuse the factory instead of growing the bundle
+        self.source_ids_by_code: Dict[str, str] = {}
+        # Transpiled bundle code and the number of source codes it was built from, reused while no source is added
+        self._bundle_js: Optional[Tuple[int, str]] = None
 
     def transpile(self):
         py_module_string = (
@@ -369,6 +438,9 @@ class PretMarshaler:
         return tmpdir
 
     def process_js_module(self, js_module):
+        if COVERAGE:
+            # Keep generated line positions while removing maps that the browser cannot serve
+            js_module = re.sub(r"^[ \t]*//# sourceMappingURL=[^\n]*", "", js_module, flags=re.MULTILINE)
         has_default = False
         if "export default " in js_module:
             js_module = js_module.replace("\nexport default ", "\nvar _default_ = ")
@@ -381,7 +453,7 @@ class PretMarshaler:
             )
         ]
         imports = []
-        js_module = js_module.replace("\nexport ", "")
+        js_module = js_module.replace("\nexport ", "\n" if COVERAGE else "")
 
         if has_default:
             exported.append("_default_")
@@ -419,13 +491,11 @@ class PretMarshaler:
                 inner = named_part[1:-1].strip()
                 specs = []
                 for s in (s.strip() for s in inner.split(",") if s.strip()):
-                    specs.append(
-                        f"{s.split(' as ')[0].strip()}: {s.split(' as ')[1].strip()}"
-                        if " as " in s
-                        else s
-                    )
+                    specs.append(f"{s.split(' as ')[0].strip()}: {s.split(' as ')[1].strip()}" if " as " in s else s)
                 lines.append(f"var {{ {', '.join(specs)} }} = pret_modules['{mod_key}'];")
 
+            if COVERAGE:
+                return " ".join(lines) + "\n" * match.group(0).count("\n")
             return "\n".join(lines)
 
         js_module = re.sub(
@@ -443,11 +513,13 @@ class PretMarshaler:
         _current_marshaller = None
 
     def append(self, obj) -> int:
-        chunk_idx = self.chunk_idx
-        self.visit(obj)
-        self.chunk_idx += 1
-        self._serialized_bytes_cache = None
-        return chunk_idx
+        # Kernel execution and callback threads share the encoder and compiled source cache
+        with self.serialization_lock:
+            chunk_idx = self.chunk_idx
+            self.visit(obj)
+            self.chunk_idx += 1
+            self._serialized_bytes_cache = None
+            return chunk_idx
 
     def _build_bundle(self, blob: bytes) -> Tuple[bytes, str]:
         header = (
@@ -480,13 +552,24 @@ class PretMarshaler:
         order += [m for m in mods if m not in order]  # fallback for cycles
         order.remove("org.transcrypt.__runtime__")  # already bundled in js
 
-        js = header + "\n\n".join(mods[m] for m in order) + "\n//# sourceURL=dynamic_factory.js"
+        js = header + "\n\n".join(mods[m] for m in order)
+        if COVERAGE:
+            from .testing.sources import save_bundle
+
+            js = save_bundle(tmpdir, mods, order, js, self.source_codes, self.coverage_origins, self.coverage_excluded)
+        else:
+            js += "\n//# sourceURL=dynamic_factory.js"
         return blob, js
 
     def get_serialized_bytes(self) -> Tuple[bytes, str]:
-        if self._serialized_bytes_cache is None:
-            self._serialized_bytes_cache = self._build_bundle(self._file.getvalue())
-        return self._serialized_bytes_cache
+        # Keep source compilation and CBOR bytes consistent while append waits
+        with self.serialization_lock:
+            if self._serialized_bytes_cache is None:
+                blob = self._file.getvalue()
+                if self._bundle_js is None or self._bundle_js[0] != len(self.source_codes):
+                    self._bundle_js = (len(self.source_codes), self._build_bundle(blob)[1])
+                self._serialized_bytes_cache = (blob, self._bundle_js[1])
+            return self._serialized_bytes_cache
 
     def dump(self, obj):
         chunk_idx = self.append(obj)
@@ -511,15 +594,18 @@ class PretMarshaler:
                     # JS marshalable, we need to encode it as a tag
                     globals = marshalable[2] if len(marshalable) > 2 else {}
                     args = ", ".join(globals.keys())
-                    factory_code = (
-                        f"function {source_code_id}({args})"
-                        " {\n" + f"{target.strip()};\n" + "}\n"
-                        f"export {{{source_code_id}}};\n"
-                    )
+                    template = f"({args})" + " {\n" + f"{target.strip()};\n" + "}\n"
+                    if not COVERAGE and template in self.source_ids_by_code:
+                        encoder.encode(
+                            cbor2_encoder.CBORTag(4000, [self.source_ids_by_code[template], list(globals.values())])
+                        )
+                        return
+                    self.source_ids_by_code[template] = source_code_id
+                    factory_code = f"function {source_code_id}{template}export {{{source_code_id}}};\n"
                     self.source_codes[source_code_id] = ("js", factory_code)
-                    encoder.encode(
-                        cbor2_encoder.CBORTag(4000, [source_code_id, list(globals.values())])
-                    )
+                    if COVERAGE:
+                        self.coverage_origins[source_code_id] = coverage_js_origins[value]
+                    encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, list(globals.values())]))
                     return
             elif getattr(value, "__module__", None) in PRE_TRANSPILED_MODULES:
                 # If the function is from a pre-transpiled module, we can just use its
@@ -544,12 +630,14 @@ class PretMarshaler:
                 encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, []]))
                 return
             elif isinstance(value, (FunctionType, BuiltinFunctionType)):
+                reconstructed = False
                 try:
                     code = inspect.getsource(value)
                     function_name = value.__name__
                     if function_name == "<lambda>":
                         raise Exception()
                 except Exception:
+                    reconstructed = True
                     try:
                         function_name = "_fn_"
                         code = getsource(value.__code__, as_function=function_name)
@@ -562,9 +650,16 @@ class PretMarshaler:
                     scoped_vars.pop("__class__")
                 # Factory will be used to create the fn or cls
                 tree = ast.parse(code)
+                # Loaded functions can outlive their source files when packages are updated
+                if tree.body[0].name != function_name:
+                    raise ValueError(
+                        f"Cannot serialize {value.__qualname__}, its loaded code does not match "
+                        f"{inspect.getsourcefile(value)}. Restart the kernel or Python process "
+                        "after updating packages."
+                    )
                 tree.body[0].decorator_list = []
                 factory = ast.FunctionDef(
-                    name=source_code_id,
+                    name="__pret_factory__",
                     args=ast.arguments(
                         args=[ast.arg(arg=n, annotation=None) for n in scoped_vars],
                         kwarg=None,
@@ -578,11 +673,34 @@ class PretMarshaler:
                     decorator_list=[],
                 )
                 ast.fix_missing_locations(factory)
-                factory_code = astunparse.unparse(factory)
+                template = astunparse.unparse(factory)
+                if not COVERAGE and template in self.source_ids_by_code:
+                    encoder.encode(
+                        cbor2_encoder.CBORTag(4000, [self.source_ids_by_code[template], list(scoped_vars.values())])
+                    )
+                    return
+                factory_code = template.replace("def __pret_factory__(", f"def {source_code_id}(", 1)
+                self.source_ids_by_code[template] = source_code_id
+                if COVERAGE:
+                    if reconstructed or not os.path.isfile(inspect.getsourcefile(value)):
+                        self.coverage_excluded.append(
+                            {
+                                "name": value.__qualname__,
+                                "file": value.__code__.co_filename,
+                                "line": value.__code__.co_firstlineno,
+                                "reason": (
+                                    "bytecode reconstructed source" if reconstructed else "source without a file"
+                                ),
+                            }
+                        )
+                    else:
+                        from .testing.sources import function_source
+
+                        factory_code, self.coverage_origins[source_code_id] = function_source(
+                            value, source_code_id, scoped_vars
+                        )
                 self.source_codes[source_code_id] = ("py", factory_code)
-                encoder.encode(
-                    cbor2_encoder.CBORTag(4000, [source_code_id, list(scoped_vars.values())])
-                )
+                encoder.encode(cbor2_encoder.CBORTag(4000, [source_code_id, list(scoped_vars.values())]))
                 return
             elif isinstance(value, type):
                 # 1. Get own members of the class (members that are not inherited)
@@ -611,9 +729,7 @@ class PretMarshaler:
                 )
                 members = [(name, getattr(value, name)) for name in members_names]
                 parent_members = [(n, getattr(base, n)) for n in base_members_names] if base else []
-                own_members = [
-                    member for member in members if member not in parent_members and member[0]
-                ]
+                own_members = [member for member in members if member not in parent_members and member[0]]
                 methods = [member for member in own_members if isinstance(member[1], FunctionType)]
                 encoder.encode(
                     cbor2_encoder.CBORTag(
@@ -658,9 +774,7 @@ class PretMarshaler:
                             state = value.__dict__
                     except AttributeError:
                         state = {}
-                    encoder.encode(
-                        cbor2_encoder.CBORTag(4003, [type(value), state, type(value).__name__])
-                    )
+                    encoder.encode(cbor2_encoder.CBORTag(4003, [type(value), state, type(value).__name__]))
                     return
             raise ValueError()
         except (RecursionError, TypeError):
@@ -672,8 +786,7 @@ class PretMarshaler:
             else:
                 traceback.print_exc()
                 raise ValueError(
-                    f"Could not marshal {value} of type {type(value)}. "
-                    "Please ensure it is a marshalable type."
+                    f"Could not marshal {value} of type {type(value)}. Please ensure it is a marshalable type."
                 )
         except BaseException:
             if self.allow_error:
@@ -697,15 +810,14 @@ def is_builtins(key, value):
     return False
 
 
-shared_marshaler: Optional[weakref.ReferenceType] = None
+shared_marshaler: Optional[PretMarshaler] = None
 
 
 def get_shared_marshaler():
     global shared_marshaler
-    if shared_marshaler is None or shared_marshaler() is None:
-        marshaler = PretMarshaler()
-        shared_marshaler = weakref.ref(marshaler)
-    return shared_marshaler()
+    if shared_marshaler is None:
+        shared_marshaler = PretMarshaler()
+    return shared_marshaler
 
 
 def clear_shared_marshaler():
