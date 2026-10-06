@@ -1,6 +1,7 @@
 # Tutorials
 
-Here are step-by-step guides to get you started.
+Start with a component, share its data with a Store, then connect it to Python.
+The DataFrame and saving tutorials extend that workflow to tables and files.
 
 <!-- --8<-- [start:tutorials] -->
 
@@ -35,6 +36,22 @@ Here are step-by-step guides to get you started.
 
     ---
     Learn how to run server-side code and interact with the server from the client, and vice-versa.
+
+=== card {: href=/tutorials/dataframes/ }
+
+    :fontawesome-solid-table:
+    **Work with DataFrames**
+
+    ---
+    Display and edit pandas data, browse external queries and make editable copies.
+
+=== card {: href=/tutorials/saving-stores/ }
+
+    :fontawesome-solid-floppy-disk:
+    **Save and reopen your work**
+
+    ---
+    Keep values and table rows in a file, reopen them and inspect what was saved.
 
 === card {: href=/tutorials/widgets/ }
 

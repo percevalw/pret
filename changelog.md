@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### DataFrames
+
+- `pret.DataFrame` values can be stored in a Store. Records, pandas and Arrow tables are copied to SQLite and editable, Ibis and Spark queries stay in their source and are read only (`apply_ibis_filter`, custom `DataFrameProvider`s).
+- Browsers receive pages of rows (`dataframe_sync="paged"`, the default) or a complete copy (`dataframe_sync="full"` with `dataframe_max_bytes`). Edits are checked row by row, an edit based on a row another user changed since is refused as a conflict.
+- `use_dataframe_view` subscribes a component to a filtered and sorted view of a DataFrame.
+
+### Saving Stores
+
+- `save_store` and `load_store` write and reopen a Store, its DataFrames and its edit history as one SQLite file. Its tables and views are readable with plain SQLite, ordinary values are a JSON document in `_pret_state`.
+- `load_store_snapshot` returns plain Python values, DataFrames as in memory copies of their rows.
+- Store files of earlier releases are converted the first time they are opened, which needs `pip install 'pret[legacy]'`, the original is kept as `name.legacy`.
+
+### Store values and collaboration
+
+- Store values no longer use Yjs or pycrdt. They are a JSON tree changed by small operations, `set`, `delete` and `insert` on paths. Python decides every edit: concurrent list insertions are all kept, an edit under a value removed by a newer commit is refused, the last write wins on the same key.
+- `pret-pycrdt` is now the optional `legacy` extra and `yjs` is no longer bundled.
+- Undo and redo are kept per browser page and skip values another page changed since, see `use_store_history`. Awaited Python callbacks of a page join its history.
+- A failed save restores the previous values and keeps the undo history.
+- A captured value, eg `todo = store["todos"][2]`, keeps following its item when items are inserted or removed before it, in Python and in the browser.
+
+### Breaking changes
+
+- `subscribe(store, callback)` now calls `callback(ops, change)`, where `ops` are the JSON operations under the watched value, eg `{"op": "set", "path": [0, "done"], "value": True}`. It returns a function that unsubscribes.
+- Store values must be JSON values. Integers must be within ±(2^53 - 1), NaN and infinities are refused, tuples become lists, and browser `BigInt` values become numbers.
+- In compiled browser code, `key in store_mapping` is now false for missing keys, `list.push` returns the new length and `splice` returns the removed items.
+- ipykernel 7.0 to 7.3 are excluded, they can leave browser requests unread so pages stop following their kernel ([ipykernel#1529](https://github.com/ipython/ipykernel/pull/1529)).
+
+### Other changes
+
+- `python -m pret.testing run --suite python|client|jupyter|all` runs Python, browser and JupyterLab tests, `--coverage` merges Python and TypeScript coverage. Extensions such as Metanno reuse it through `[tool.pret.testing]`.
+- JupyterLab and standalone bundles are built in production mode, standalone apps share pret with extensions.
+- Fix `sorted` and `list.sort` in transpiled code, which are now stable and compare tuples item by item.
+- Fix an async `use_effect` leaving its Promise as React cleanup.
+- Server functions returning bytes send them as binary, received as a `Uint8Array`.
+- Bundles are serialized safely, views rendered again reuse their browser code, Joy views follow the JupyterLab theme.
+- `cbor2` is pinned below 5.8, which fails to decode Pret bundles.
+
 ## v0.6.4 (2026-05-10)
 
 - Fix z-index issue to make Joy popup lists appear in full-page mode, while still keeping jupyter main body and modals hidden

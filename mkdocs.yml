@@ -37,9 +37,17 @@ nav:
       - tutorials/sharing-state.ipynb
       - tutorials/tictactoe.ipynb
       - tutorials/interacting-with-the-server.ipynb
+      - tutorials/dataframes.ipynb
+      - tutorials/saving-stores.ipynb
       - tutorials/widgets.ipynb
       - tutorials/from-notebook-to-app.ipynb
       - tutorials/connection-status.ipynb
+  - Under the hood:
+      - Overview: under-the-hood/index.md
+      - under-the-hood/python-in-the-browser.md
+      - under-the-hood/store-files.ipynb
+      - under-the-hood/store-edits.md
+      - under-the-hood/dataframe-queries.ipynb
   - Reference: reference/
   - Changelog: changelog.md
 

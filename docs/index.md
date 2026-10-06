@@ -1,6 +1,8 @@
 # Getting started with Pret
 
-Pret is a library for building full-stack reactive user interfaces in Python, using React as a rendering engine.
+Pret lets you build interactive interfaces in Python, inside notebooks or as standalone web applications.
+Use a Store to share data between components, connect edits to Python and save your work.
+The interface runs in the browser using React.
 
 ## Installation
 
@@ -173,3 +175,15 @@ Then, run the following command, and voilà !
 ```bash
 python app.py
 ```
+
+## Work with tables and files
+
+A Store can also hold DataFrames. Start with a pandas table, edit its Store copy through a widget,
+then save the Store to a `.pret` file. Or browse a Spark or Ibis query and select a subset to annotate.
+
+- [Work with DataFrames](tutorials/dataframes.ipynb)
+- [Save and reopen your work](tutorials/saving-stores.ipynb)
+- [Inside a Store file](under-the-hood/store-files.ipynb)
+
+For a ready-to-use JupyterLab viewer, follow
+[Metanno's walkthrough](https://percevalw.github.io/metanno/latest/jupyterlab/).
