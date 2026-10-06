@@ -113,10 +113,11 @@ dependencies = ["hatch-jupyter-builder"]
 build-function = "hatch_jupyter_builder.npm_builder"
 # The weakref runtime comes from the vendor/transcrypt submodule, missing until `git submodule update --init`
 ensured-targets = ["pret/js-extension/package.json", "vendor/transcrypt/transcrypt/modules/weakref/__init__.js"]
-install-pre-commit-hook = true
+# install-pre-commit-hook = true
 optional-editable-build = false
 build-kwargs = { "build_cmd" = "build", "npm" = ["npm"] }
-editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["npm"] }
+# Editable installs build production bundles too, a development react-konva freezes JupyterLab's production React
+editable-build-kwargs = { "build_cmd" = "build", "npm" = ["npm"] }
 
 [tool.hatch.build]
 artifacts = [

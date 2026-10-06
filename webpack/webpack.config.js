@@ -54,6 +54,8 @@ module.exports = (env) => ({
       title: "Pret",
       template: "./client/standalone/index.ejs",
       inject: false,
+      // pret/main.py fills the placeholders of this page by text replacement, keep its layout
+      minify: false,
       publicPath: '/assets',
       templateParameters: (compilation, assets, assetTags, options) => {
         return {
@@ -81,6 +83,14 @@ module.exports = (env) => ({
         },
         "react-dom": {
           eager: true, requiredVersion: "^17.0.1", singleton: true
+        },
+        // Extension bundles import pret, which JupyterLab provides through the pret extension
+        pret: {
+          eager: true,
+          singleton: true,
+          import: path.resolve("./client/standalone/shared.ts"),
+          version: require("../package.json").version,
+          requiredVersion: false,
         }
       }
     })

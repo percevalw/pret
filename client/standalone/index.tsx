@@ -41,8 +41,13 @@ const loadExtensions = async () => {
       await __webpack_init_sharing__("default");
       const container = (window as any)._JUPYTERLAB[path];
       await container.init(__webpack_share_scopes__.default);
-      const Module = await container.get("./extension");
-      return Module();
+      // Packages such as react-simple-dock register their components in their JupyterLab plugin, while
+      // the Metanno plugin needs JupyterLab modules absent here, its index registers the components
+      try {
+        return (await container.get("./extension"))();
+      } catch {
+        return (await container.get("./index"))();
+      }
     })
   );
 };
@@ -122,10 +127,12 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function renderPret() {
+  const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
+  // Documentation pages without embedded widgets have no bundle configuration
+  if (!pretChunks.length) return;
+
   const bundlePromise = loadBundle();
   const loadApp = makeLoadApp();
-
-  const pretChunks = document.querySelectorAll("[data-pret-chunk-idx]");
 
   for (let chunk of pretChunks as any) {
     const chunkIdx = parseInt(chunk.getAttribute("data-pret-chunk-idx"), 10);
