@@ -45,6 +45,21 @@ class BinaryPayload:
         self.buffers = buffers
 
 
+def binary_reply(value):
+    """
+    Split a call result sent with binary buffers into its JSON fields and buffers, or return None.
+
+    A BinaryPayload keeps its fields, raw bytes, eg a PDF returned by a server_only function, are marked
+    `__pret_bytes__` so the browser receives them as a Uint8Array. Used by the Jupyter comm and the standalone
+    `/method` route.
+    """
+    if isinstance(value, BinaryPayload):
+        return {"__pret_binary__": True, **value.data}, value.buffers
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return {"__pret_binary__": True, "__pret_bytes__": True}, [bytes(value)]
+    return None
+
+
 def make_remote_callable(function_id):
     async def remote_call(*args, **kwargs):
         return await get_manager().send_call(function_id, args, kwargs)
@@ -56,9 +71,7 @@ def server_only(
     fn: Callable[CallableParams, CallableReturn],
     identifier=None,
 ) -> Callable[CallableParams, Union[Awaitable[CallableReturn], CallableReturn]]:
-    return marshal_as(
-        fn, make_remote_callable(get_manager().register_function(fn, identifier))
-    )
+    return marshal_as(fn, make_remote_callable(get_manager().register_function(fn, identifier)))
 
 
 @marshal_as(
@@ -147,15 +160,11 @@ class weakmethod:
 
     def __call__(self, *args, **kwargs):
         if self.owner is None:
-            raise Exception(
-                "Function was never bound to a class scope, you should use it as a "
-                "decorator on a method"
-            )
+            raise Exception("Function was never bound to a class scope, you should use it as a decorator on a method")
         instance = self.instance()
         if instance is None:
             raise Exception(
-                f"Cannot call {self.owner.__name__}.{self.cls_method.__name__} because "
-                f"instance has been destroyed"
+                f"Cannot call {self.owner.__name__}.{self.cls_method.__name__} because instance has been destroyed"
             )
         return self.cls_method(instance, *args, **kwargs)
 
@@ -285,9 +294,7 @@ class ClientManager:
 
     def notify_state_write_rejected(self, sync_id, reason):
         new_state = dict(self.connection_state)
-        new_state["state_write_rejection_count"] = (
-            self.connection_state.get("state_write_rejection_count") or 0
-        ) + 1
+        new_state["state_write_rejection_count"] = (self.connection_state.get("state_write_rejection_count") or 0) + 1
         new_state["last_state_write_rejection"] = {
             "sync_id": sync_id,
             "reason": reason,
@@ -330,9 +337,7 @@ class ClientManager:
                     future.set_result(None)
                 except Exception as error:
                     message_text = str(error)
-                    reason = (
-                        "send_timeout" if "PRET_COMM_TIMEOUT" in message_text else "send_failed"
-                    )
+                    reason = "send_timeout" if "PRET_COMM_TIMEOUT" in message_text else "send_failed"
                     self.set_connection_status(
                         connected=False,
                         reason=reason,
@@ -791,19 +796,13 @@ class JupyterServerManager(ServerManager):
             # since the comm creation might come from the front-end instead.
             comm = Comm(target_name="pret", data={})
             comm.on_msg(self.handle_comm_msg)
-            comm.on_close(
-                lambda msg, opened_comm=comm: self.handle_comm_close(opened_comm, msg)
-            )
+            comm.on_close(lambda msg, opened_comm=comm: self.handle_comm_close(opened_comm, msg))
             self.comm = comm
 
     def handle_comm_open(self, comm, msg):
         self.comm = comm
         self.comm.on_msg(self.handle_comm_msg)
-        self.comm.on_close(
-            lambda close_msg, opened_comm=comm: self.handle_comm_close(
-                opened_comm, close_msg
-            )
-        )
+        self.comm.on_close(lambda close_msg, opened_comm=comm: self.handle_comm_close(opened_comm, close_msg))
 
     def handle_comm_close(self, comm, msg=None):
         """
@@ -842,11 +841,9 @@ class JupyterServerManager(ServerManager):
                 self.send_message(*result)
                 return
             method, data = result
-            value = data.get("value") if method == "call_success" else None
-            if isinstance(value, BinaryPayload):
-                data = dict(data)
-                data["value"] = {"__pret_binary__": True, **value.data}
-                self.send_message(method, data, buffers=value.buffers)
+            binary = binary_reply(data.get("value")) if method == "call_success" else None
+            if binary is not None:
+                self.send_message(method, {**data, "value": binary[0]}, buffers=binary[1])
             else:
                 self.send_message(method, data)
 
@@ -997,7 +994,21 @@ class StandaloneClientManager(ClientManager):
             )
             if response.ok is False:
                 raise Exception(f"Failed to POST method call: {response.status}")
-            result = await response.json()
+            # Transcrypt renames get but not has, the route marks binary replies with this header
+            if response.headers.has("X-Pret-Binary"):
+                # Binary replies, see serve.py, hold the JSON length, the JSON message and the buffer, the
+                # value becomes the bytes or, for a BinaryPayload, its fields with `bytes` as in Jupyter
+                body = await response.arrayBuffer()
+                length = __new__(DataView(body)).getUint32(0)  # noqa: F821
+                result = loads(__new__(TextDecoder()).decode(__new__(Uint8Array(body, 4, length))))  # noqa: F821
+                value = result["data"]["value"]
+                buffer = __new__(Uint8Array(body, 4 + length))  # noqa: F821
+                if "__pret_bytes__" in value:
+                    result["data"]["value"] = buffer
+                else:
+                    value["bytes"] = buffer
+            else:
+                result = await response.json()
             if "method" in result and "data" in result:
                 future = self.handle_message(result["method"], result["data"])
                 if is_awaitable(future):

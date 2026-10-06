@@ -824,12 +824,11 @@ export default class PretJupyterHandler {
     }
     if (msgContent?.method === "call_success") {
       const value = (msgContent.data as any)?.value;
+      // Raw bytes, eg a PDF returned by a server_only function, become the value, see binary_reply in manager.py
       if (value?.__pret_binary__ === true) {
-        const { __pret_binary__, ...metadata } = value;
-        (msgContent.data as any).value = {
-          ...metadata,
-          bytes: toUint8Array(msg.buffers?.[0]),
-        };
+        const { __pret_binary__, __pret_bytes__, ...metadata } = value;
+        const bytes = toUint8Array(msg.buffers?.[0]);
+        (msgContent.data as any).value = __pret_bytes__ ? bytes : { ...metadata, bytes };
       }
     }
     try {
