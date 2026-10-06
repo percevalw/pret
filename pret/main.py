@@ -215,9 +215,7 @@ def extract_js_dependencies(
     packages = []
 
     for ref_idx, ref in enumerate(refs):
-        if not ref.__module__.startswith("js.") or any(
-            fnmatch.fnmatch(str(ref), x) for x in exclude
-        ):
+        if not ref.__module__.startswith("js.") or any(fnmatch.fnmatch(str(ref), x) for x in exclude):
             continue
 
         js_module_path_parts = ref.name.split(".")
@@ -293,22 +291,19 @@ def extract_prebuilt_extension_assets(
 
 def extract_prebuilt_base_assets() -> Tuple[Dict[str, Path], Path]:
     """
-    Extracts the base index.html file as well as a mapping entry -> file to know where
-    to look for whenever the app asks for a chunk or an asset.
-
-    Parameters
-    ----------
+    Collect standalone assets including SQLite WebAssembly for exported apps and documentation
 
     Returns
     -------
-    Tuple[Dict[str, Path], List[str]]
+    Tuple[Dict[str, Path], Path]
+        Files to publish and the HTML template used to locate the browser entry point
     """
     mapping = {}
     static_dir = Path(__file__).parent / "js-base"
     entry = next(static_dir.glob("index.html"))
 
-    for static_file in static_dir.glob("*.js"):
-        if static_file.name not in mapping:
+    for static_file in static_dir.glob("*"):
+        if static_file.is_file():
             mapping[static_file.name] = static_file
 
     return mapping, entry

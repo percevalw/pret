@@ -9,15 +9,15 @@ license = { file = "LICENSE" }
 urls.homepage = "https://github.com/percevalw/pret/"
 urls.repository = "https://github.com/percevalw/pret/"
 dynamic = ["version"]
-requires-python = ">=3.7,<4.0,!=3.8.1"
+requires-python = ">=3.10,<4.0"
 dependencies = [
-    "ipykernel",
+    "ipykernel>=6,!=7.0.*,!=7.1.*,!=7.2.*,!=7.3.*",  # 7.0 to 7.3 can leave browser requests unread
     "quart",
     "typer",
     "pygetsource",
-    "cbor2<6.0.0",  # temp fix
-    "pret-pycrdt>=0.12.20-post2",
-    "watchfiles",
+    "cbor2<5.8.0",  # 5.8 fails to decode Pret bundles
+    "pyarrow>=14",
+    "apsw>=3.50",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -25,9 +25,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Libraries",
@@ -50,6 +47,7 @@ pret = "pret.cli:app"
 
 # ----- Development configuration -----
 [project.optional-dependencies]
+legacy = ["pret-pycrdt>=0.12.44-post2"]
 joy = [
     "pret-joy",
 ]
@@ -85,7 +83,7 @@ exclude = [
     "build",
     "pret/react.py"
 ]
-line-length = 100
+line-length = 120
 lint.select = [
     "E",
     "F",
@@ -111,11 +109,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel.hooks.jupyter-builder]
 dependencies = ["hatch-jupyter-builder"]
 build-function = "hatch_jupyter_builder.npm_builder"
+# The weakref runtime comes from the vendor/transcrypt submodule, missing until `git submodule update --init`
+ensured-targets = ["pret/js-extension/package.json", "vendor/transcrypt/transcrypt/modules/weakref/__init__.js"]
 install-pre-commit-hook = true
 optional-editable-build = false
-# switched from jlpm (ie locked yarn) to npm because
-# yarn doesn't always run post-install, which we need to patch yjs
-# waiting for https://github.com/yjs/yjs/pull/731
 build-kwargs = { "build_cmd" = "build", "npm" = ["npm"] }
 editable-build-kwargs = { "build_cmd" = "build:dev", "npm" = ["npm"] }
 
@@ -144,4 +141,4 @@ allow-direct-references = true
 transcrypt = { path = "./vendor/transcrypt", editable = true }
 
 [tool.pytest.ini_options]
-testpaths = ["tests/pytest"]
+testpaths = ["tests/python"]

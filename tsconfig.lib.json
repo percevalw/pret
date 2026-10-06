@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["client/**/*"],
+  "exclude": ["pret", "pret/js-extension"],
+  "compilerOptions": {
+    "allowJs": true,
+    "declaration": true,
+    "outDir": "lib",
+    "rootDir": "client"
+  }
+}

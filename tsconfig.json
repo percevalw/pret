@@ -2,7 +2,7 @@
   "include": ["client", "pret"],
   "compilerOptions": {
     "module": "esnext",
-    "target": "es6",
+    "target": "es2020",
     "lib": [
       "es2020",
       "dom",

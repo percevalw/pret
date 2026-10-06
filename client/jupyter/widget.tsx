@@ -46,7 +46,26 @@ class ErrorBoundary extends React.Component {
 export class PretViewWidget extends LuminoWidget {
   public makeView: () => React.ReactElement;
 
-  public manager: PretJupyterHandler;
+  private _manager: PretJupyterHandler | null = null;
+  private _releaseManager: (() => void) | null = null;
+
+  get manager(): PretJupyterHandler | null { return this._manager; }
+
+  // Notebook renderer registration can replace the manager assigned to an existing output
+  set manager(manager: PretJupyterHandler | null) {
+    if (manager === this._manager) return;
+    this._unsubscribeReadyChange?.();
+    this._releaseManager?.();
+    this._manager = manager;
+    this._releaseManager = manager?.acquire() ?? null;
+    this._unsubscribeReadyChange = manager?.subscribeReadyChange(() => {
+      if (!this._viewLoadPromise && this._renderFailureIsRetryable) {
+        this.makeView = null;
+        this._renderFailureIsRetryable = false;
+        this.showContent();
+      }
+    }) ?? null;
+  }
   public keepHiddenWhenExecuted: boolean;
   model: any;
   private readonly _mimeType: string;
@@ -68,7 +87,6 @@ export class PretViewWidget extends LuminoWidget {
 
     this._mimeType = options.mimeType;
     this._viewData = options.view_data;
-    this.manager = manager;
     this.keepHiddenWhenExecuted = true;
     this._isRendered = false;
     this._renderNode = this.node;
@@ -85,13 +103,7 @@ export class PretViewWidget extends LuminoWidget {
     // on its own (which will call showContent)
     this.addClass("pret-view");
 
-    this._unsubscribeReadyChange = this.manager.subscribeReadyChange(() => {
-      if (!this._viewLoadPromise && this._renderFailureIsRetryable) {
-        this.makeView = null;
-        this._renderFailureIsRetryable = false;
-        this.showContent();
-      }
-    });
+    this.manager = manager;
 
     this.showContent();
   }
@@ -150,6 +162,8 @@ export class PretViewWidget extends LuminoWidget {
   dispose() {
     this._unsubscribeReadyChange?.();
     this._unsubscribeReadyChange = null;
+    this._releaseManager?.();
+    this._releaseManager = null;
     const hasFullpage = document.getElementById(FULLPAGE_HOST_ID) !== null;
 
     if (this._isRendered) {
@@ -169,7 +183,7 @@ export class PretViewWidget extends LuminoWidget {
   }
 
   showContent() {
-    if (!this.isVisible) {
+    if (this.isDisposed || !this.manager || !this.isVisible) {
       return;
     }
 

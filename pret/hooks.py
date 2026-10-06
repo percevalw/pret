@@ -331,6 +331,58 @@ def use_store_snapshot(proxy_object):
     """
 
 
+@marshal_as(js="return window.storeLib.useDataFrameView")
+def use_dataframe_view(dataframe, filter=None, primary_key=None, sort=None, load=True):
+    """
+    Subscribe a browser component to a DataFrame query view.
+
+    The view shows the scope of the DataFrame, the rows shared by all its widgets in the page,
+    filtered and sorted for this component. When no scope is set, the hook loads the whole table.
+    This hook exposes a rowSource for loaded data, the preceding rowSource while the view changes,
+    and the DataFrame description, loading message, and error. It releases its view when the
+    component unmounts. Pass arguments by position, the browser function takes no keywords.
+
+    To show related tables together, such as notes and their entities, pass load=False and set
+    the scopes from a component effect. `await dataframe.fetchScope(filter)` queries the scope of
+    a filter without showing it, `dataframe.setScope(scope)` shows it in every widget of that
+    DataFrame. Fetch the scopes of all related tables first, then set them one after the other.
+
+    Parameters
+    ----------
+    dataframe
+        Client DataFrame supplied by the component Store
+    filter
+        PRET filter expression evaluated by the DataFrame provider
+    primary_key : str|None
+        Column used to locate rows selected by the factory
+    sort
+        List of column and direction mappings
+    load : bool
+        Load the whole table when no scope is set, False when the component sets scopes itself
+
+    Returns
+    -------
+    object
+        rowSource for the current query, previousRowSource during a view change,
+        description, loading message and error for the component to render
+    """
+
+
+@marshal_as(js="return window.storeLib.useStoreHistory")
+def use_store_history(store):
+    """
+    Give a component undo and redo controls for its Store in this browser page.
+
+    Widgets using the same Store share these controls. Reloading the page clears
+    both stacks, and edits from other pages do not enter this page's undo history.
+
+    Returns
+    -------
+    object
+        Undo and redo methods, canUndo and canRedo flags, and pending and connection status
+    """
+
+
 @marshal_as(
     js="""
 return function use_connection_status() {

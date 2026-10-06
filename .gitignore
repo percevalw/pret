@@ -181,3 +181,6 @@ yarn-error.log
 
 # Data files
 *.bin
+
+# Store files written by local app runs
+*.pret-journal
