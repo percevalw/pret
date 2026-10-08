@@ -30,6 +30,15 @@ test("separate notebook outputs share the same Store", async ({ page }) => {
     "from pret import create_store\nfrom todo_app import TodoList\n" +
       "state = create_store({'todos': [{'text': 'My first todo', 'done': True}, " +
       "{'text': 'My second todo', 'done': False}]})\nTodoList(state=state)",
+  ]);
+  await page.notebook.runCell(0, true);
+  const checkbox = page.getByRole("checkbox", { name: "My second todo" });
+  await expect(checkbox).not.toBeChecked();
+  // Define the counter after the first output loads so the manager appends its component code. The cell is added
+  // once the first one ran, JupyterLab 3 test helpers wait for every cell of the notebook to run
+  await addCodeCell(
+    page,
+    panel,
     `from pret import component, use_store_snapshot
 from pret.react import p
 
@@ -42,12 +51,8 @@ def RemainingTodoCounter(state):
     remaining = sum(not todo['done'] for todo in todos)
     return p(f'Number of unfinished todos: {remaining}.', id='remaining-todo-counter')
 
-RemainingTodoCounter(state=state)`,
-  ]);
-  // Define the counter after the first output loads so the manager appends its component code
-  await page.notebook.runCell(0, true);
-  const checkbox = page.getByRole("checkbox", { name: "My second todo" });
-  await expect(checkbox).not.toBeChecked();
+RemainingTodoCounter(state=state)`
+  );
   await page.notebook.runCell(1, true);
   await expect(page.locator("#remaining-todo-counter")).toHaveText("Number of unfinished todos: 1.");
   await checkbox.click();
