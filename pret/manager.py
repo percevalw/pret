@@ -794,15 +794,33 @@ class JupyterServerManager(ServerManager):
             # in the front-end.
             # This is why we also register the target in the constructor
             # since the comm creation might come from the front-end instead.
-            comm = Comm(target_name="pret", data={})
-            comm.on_msg(self.handle_comm_msg)
-            comm.on_close(lambda msg, opened_comm=comm: self.handle_comm_close(opened_comm, msg))
-            self.comm = comm
+            self.attach_comm(Comm(target_name="pret", data={}))
 
     def handle_comm_open(self, comm, msg):
+        self.attach_comm(comm)
+
+    def attach_comm(self, comm):
+        """
+        Send kernel messages on this comm and dispatch its browser messages on a subshell that still exists.
+
+        ipykernel 7.4 dispatches the browser messages of a comm on the subshell of the request handled when the
+        kernel last sent on it. A Store watcher sends changes under the request that loaded its Store, often a
+        Metanno view request whose JupyterLab subshell is deleted when its comm closes, and ipykernel would then
+        drop every later PRET request. Those messages use the subshell chosen by the browser instead
+        """
         self.comm = comm
-        self.comm.on_msg(self.handle_comm_msg)
-        self.comm.on_close(lambda close_msg, opened_comm=comm: self.handle_comm_close(opened_comm, close_msg))
+        comm.on_msg(self.handle_comm_msg)
+        comm.on_close(lambda msg, opened_comm=comm: self.handle_comm_close(opened_comm, msg))
+        route = getattr(comm, "_reply_subshell_for", None)
+        channel = getattr(self.kernel, "shell_channel_thread", None)
+        if route is None or channel is None:
+            return
+
+        def reply_subshell_for(data, default):
+            subshell_id = route(data, default)
+            return subshell_id if subshell_id is None or subshell_id in channel.manager.list_subshell() else default
+
+        comm._reply_subshell_for = reply_subshell_for
 
     def handle_comm_close(self, comm, msg=None):
         """
