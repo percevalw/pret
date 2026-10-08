@@ -6,7 +6,6 @@ repo_name: percevalw/pret
 theme:
   language: en
   name: material
-  custom_dir: docs/assets/overrides
   palette:
     - scheme: default
       toggle:
@@ -17,7 +16,6 @@ theme:
         icon: material/brightness-7
         name: Switch to light mode
 
-  favicon: assets/logo/pret.svg
   features:
     - navigation.tracking
     - navigation.instant
@@ -59,12 +57,6 @@ extra:
 extra_css:
   - assets/stylesheets/extra.css
 
-extra_javascript:
-  - https://cdn.jsdelivr.net/npm/vega@5
-  - https://cdn.jsdelivr.net/npm/vega-lite@5
-  - https://cdn.jsdelivr.net/npm/vega-embed@6
-  - assets/termynal/termynal.js
-
 watch:
   - changelog.md
   - pret
@@ -97,7 +89,6 @@ plugins:
   - mkdocstrings_options_templates:
   - mkdocstrings:
       enable_inventory: true
-      custom_templates: docs/assets/templates
       handlers:
         python:
           options:
@@ -111,8 +102,6 @@ plugins:
           inventories:
             - https://percevalw.github.io/metanno/latest/objects.inv
             - https://aphp.github.io/edsnlp/latest/objects.inv
-  - bibtex:
-      bibtex_file: "docs/references.bib"
   - clickable_code:
 # Just uncomment the following lines to enable i18n
 # and start creating .fr.md and .en.md files.
