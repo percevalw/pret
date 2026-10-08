@@ -38,6 +38,7 @@
 - Server functions returning bytes send them as binary, received as a `Uint8Array`.
 - Bundles are serialized safely, views rendered again reuse their browser code, Joy views follow the JupyterLab theme.
 - `cbor2` is pinned below 5.8, which fails to decode Pret bundles.
+- With ipykernel 7.4 and JupyterLab 4.6, Pret requests are no longer dropped once the subshell of the request that loaded a Store is deleted, eg after a Metanno view is reloaded.
 
 ## v0.6.4 (2026-05-10)
 
