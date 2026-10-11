@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkmetanno=self.webpackChunkmetanno||[]).push([[323],{1323:(n,t,e)=>{e.r(t),e.d(t,{default:()=>a}),e(7817),e(7531);const a={id:"metanno:plugin",activate:function(){return null},autoStart:!0}}}]);
