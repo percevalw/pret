@@ -213,6 +213,9 @@ export function registerPretJupyterHandler(
           path,
           setTimeout(() => {
             pendingPretAutosaveByPath.delete(path);
+            // A notebook closed or saved in the meantime is skipped, saving a closing notebook shows a JupyterLab
+            // error dialog once its document is disposed
+            if (context?.isDisposed || context?.model?.dirty === false) return;
             void context?.save?.().catch((reason) => {
               console.error(
                 `Failed to autosave PRET notebook ${path}:`,

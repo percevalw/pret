@@ -35,6 +35,7 @@
 - JupyterLab and standalone bundles are built in production mode, standalone apps share pret with extensions.
 - Fix `sorted` and `list.sort` in transpiled code, which are now stable and compare tuples item by item.
 - Fix an async `use_effect` leaving its Promise as React cleanup.
+- Fix a "File Save Error" dialog when a notebook is closed just after a Pret view renders.
 - Server functions returning bytes send them as binary, received as a `Uint8Array`.
 - Bundles are serialized safely, views rendered again reuse their browser code, Joy views follow the JupyterLab theme.
 - `cbor2` is pinned below 5.8, which fails to decode Pret bundles.
