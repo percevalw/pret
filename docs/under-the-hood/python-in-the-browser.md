@@ -56,7 +56,7 @@ var label = function (count) {
 
 A few standard modules come translated in advance, such as `math`, `re`, `datetime`, `json`, `itertools` and
 `functools`. Functions from other modules cannot run in the browser: see
-[Interacting with the server](../tutorials/interacting-with-the-server.ipynb) for these.
+[Interacting with the server](../tutorials/interacting-with-the-server.md) for these.
 
 !!! note "What differs from Python"
 
@@ -127,7 +127,7 @@ web server.
 
 Some functions have to run in Python, because they read files, query a database or use a library that has no
 browser version. Decorating them with `server_only`, as shown in
-[Interacting with the server](../tutorials/interacting-with-the-server.ipynb), keeps them in Python, and the
+[Interacting with the server](../tutorials/interacting-with-the-server.md), keeps them in Python, and the
 browser receives a stub instead. When the function is called from the browser, the stub sends the call to the
 kernel as a message:
 
@@ -162,5 +162,5 @@ server function, or a page of DataFrame rows as Arrow data, arrives in the brows
 converted to text.
 
 The DataFrames of a connected Store use these calls for their queries, see
-[How widgets query DataFrames](dataframe-queries.ipynb). Store edits have their own messages, see
+[How widgets query DataFrames](dataframe-queries.md). Store edits have their own messages, see
 [What happens when you edit a Store](store-edits.md).
