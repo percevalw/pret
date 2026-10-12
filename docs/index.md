@@ -186,4 +186,4 @@ then save the Store to a `.pret` file. Or browse a Spark or Ibis query and selec
 - [Inside a Store file](under-the-hood/store-files.ipynb)
 
 For a ready-to-use JupyterLab viewer, follow
-[Metanno's walkthrough](https://percevalw.github.io/metanno/latest/jupyterlab/).
+[Metanno's walkthrough](https://percevalw.github.io/metanno/latest/tutorials/annotate-a-table/).
