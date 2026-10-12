@@ -4,7 +4,7 @@ When a widget changes a connected Store, for instance when you tick a checkbox b
 or edit a cell of a DataFrame, the page shows the new value at once and sends the edit to the Python Store, which
 saves it. Every other page and notebook showing the same Store then receives the edit a moment later. This page
 follows such an edit from the page to Python and back, then explains what happens when the connection drops, when
-two people edit the same value, and how undo keeps the edits of others. [Inside a Store file](store-files.ipynb)
+two people edit the same value, and how undo keeps the edits of others. [Inside a Store file](store-files.md)
 describes the SQLite tables mentioned below.
 
 ## Who takes part

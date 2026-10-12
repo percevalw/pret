@@ -181,9 +181,9 @@ python app.py
 A Store can also hold DataFrames. Start with a pandas table, edit its Store copy through a widget,
 then save the Store to a `.pret` file. Or browse a Spark or Ibis query and select a subset to annotate.
 
-- [Work with DataFrames](tutorials/dataframes.ipynb)
-- [Save and reopen your work](tutorials/saving-stores.ipynb)
-- [Inside a Store file](under-the-hood/store-files.ipynb)
+- [Work with DataFrames](tutorials/dataframes.md)
+- [Save and reopen your work](tutorials/saving-stores.md)
+- [Inside a Store file](under-the-hood/store-files.md)
 
 For a ready-to-use JupyterLab viewer, follow
 [Metanno's walkthrough](https://percevalw.github.io/metanno/latest/tutorials/annotate-a-table/).
