@@ -16,13 +16,13 @@ The interface runs in the browser using React.
 pip install pret pret-joy
 ```
 
-To use it with Jupyter, if you install the library in a custom environment (conda, venv, or other),
-you will likely need to tell Jupyter where to find the front-end files.
-You can do this by running the following command (only once):
+When JupyterLab runs in another environment than Pret, eg a conda environment or a venv of your project, run this command in the environment of Pret once:
 
 ```bash
 pret update-jupyter-config --apply
 ```
+
+It links the front-end files of Pret and of its extensions, eg pret-joy, into your Jupyter data folder (`~/.local/share/jupyter/labextensions`), refresh JupyterLab in your browser to load them.
 
 ## Features
 
