@@ -2,7 +2,7 @@
   "name": "pret",
   "main": "lib/index.js",
   "types": "client/index.d.ts",
-  "version": "0.7.0-beta.1",
+  "version": "0.7.0-beta.2",
   "scripts": {
     "build:lib": "tsc -p tsconfig.lib.json",
     "build": "jlpm clean && jlpm build:standalone && jlpm build:jupyter",
