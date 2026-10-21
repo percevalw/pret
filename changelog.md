@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Store now polls the kernel only while a view or subscriber uses it, to prevent many inactive views to bomb the kernel with useless heath queries
+
 ## v0.7.0-beta.1 (2026-10-08)
 
 ### DataFrames

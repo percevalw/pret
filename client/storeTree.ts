@@ -166,6 +166,7 @@ export type DocController = {
   assertWritable(): void;
   beginLocalOp(): void;
   finishLocalTransaction(transaction: LocalTransaction): void;
+  startPolling(): void;
 };
 
 // Values of one Store in a page, rebuilt by pret.store rebuild_doc from the state Python sent
@@ -304,14 +305,20 @@ export class StoreDoc {
     }
   }
 
+  get observed(): boolean {
+    return this.listeners.size > 0 || this.subscribers.size > 0;
+  }
+
   listen(listener: () => void): () => void {
     this.listeners.add(listener);
+    this.__pret_controller__?.startPolling();
     return () => this.listeners.delete(listener);
   }
 
   subscribe(node: StoreNode, callback: (ops: StoreOp[], info: ChangeInfo) => void): () => void {
     const subscriber = { node, callback };
     this.subscribers.add(subscriber);
+    this.__pret_controller__?.startPolling();
     return () => this.subscribers.delete(subscriber);
   }
 }
