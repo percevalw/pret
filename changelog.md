@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Store now polls the kernel only while a view or subscriber uses it, to prevent many inactive views to bomb the kernel with useless heath queries
+- We now use an icontains op for case insensitive text search in pret dataframes while other text ops match case
 
 ## v0.7.0-beta.1 (2026-10-08)
 

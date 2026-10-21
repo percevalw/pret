@@ -48,7 +48,7 @@ def coerce_ibis_literal(dtype, value, operator):
         raise ValueError("null literals require is_null or is_not_null")
     if dtype.is_array() or dtype.is_struct() or dtype.is_map() or dtype.is_binary():
         raise ValueError(f"source filtering is unavailable for {dtype}")
-    if operator in {"contains", "starts_with", "ends_with"} and not dtype.is_string():
+    if operator in {"icontains", "contains", "starts_with", "ends_with"} and not dtype.is_string():
         raise ValueError(f"{operator} requires a string column")
     if dtype.is_boolean():
         if not isinstance(value, bool):
@@ -123,6 +123,7 @@ def compile_predicate(expression, node):
         "lte": lambda: column <= value,
         "gt": lambda: column > value,
         "gte": lambda: column >= value,
+        "icontains": lambda: column.lower().contains(value.lower()),
         "contains": lambda: column.contains(value),
         "starts_with": lambda: column.startswith(value),
         "ends_with": lambda: column.endswith(value),

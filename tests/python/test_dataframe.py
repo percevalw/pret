@@ -360,20 +360,21 @@ def test_ibis_source_previews_and_explicit_paging(engine, request):
 
 def test_filters_run_on_sqlite(request):
     """
-    Combined, null, date, large integer and text filters select the expected SQLite rows
+    Combined, null, date, large integer and text filters select the expected SQLite rows, only icontains ignores case
     """
     backend = ibis.sqlite.connect(":memory:")
     request.addfinalizer(backend.disconnect)
     backend.raw_sql("CREATE TABLE data(list_id INTEGER, active BOOLEAN, name TEXT, day DATE)")
     backend.raw_sql(
-        "INSERT INTO data VALUES (1,1,'abc','2026-08-11'),(2,1,'abc','2026-08-12'),(3,0,'xabcx','2026-08-12'),"
+        "INSERT INTO data VALUES (1,1,'ABC','2026-08-11'),(2,1,'abc','2026-08-12'),(3,0,'xAbCx','2026-08-12'),"
         "(4,1,'ab','2026-08-13'),(9223372036854775807,0,NULL,NULL)"
     )
-    contains_abc = {"kind": "predicate", "column": "name", "operator": "contains", "value": "abc"}
+    contains_abc = {"kind": "predicate", "column": "name", "operator": "icontains", "value": "abc"}
     for node, expected in [
         (contains_abc, [1, 2, 3]),
-        ({"kind": "predicate", "column": "name", "operator": "starts_with", "value": "ab"}, [1, 2, 4]),
-        ({"kind": "predicate", "column": "name", "operator": "ends_with", "value": "cx"}, [3]),
+        ({"kind": "predicate", "column": "name", "operator": "contains", "value": "abc"}, [2]),
+        ({"kind": "predicate", "column": "name", "operator": "starts_with", "value": "AB"}, [1]),
+        ({"kind": "predicate", "column": "name", "operator": "ends_with", "value": "Cx"}, [3]),
         ({"kind": "predicate", "column": "list_id", "operator": "gte", "value": 3}, [3, 4, 2**63 - 1]),
         (
             {

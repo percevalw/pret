@@ -9,6 +9,7 @@ import datetime
 import decimal
 import json
 import math
+import re
 import uuid
 from typing import TYPE_CHECKING
 
@@ -405,12 +406,16 @@ class SQLiteDataFrameProvider(DataFrameProvider):
             return f"{name} IS {'NOT ' if operator == 'is_not_null' else ''}NULL", ()
         literal = node["value"]
         arrow_type = fields[column].type
-        if operator in {"contains", "starts_with", "ends_with"}:
+        if operator in {"icontains", "contains", "starts_with", "ends_with"}:
             if not (pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type)):
                 raise ValueError("Text filters require a string column")
-            escaped = str(literal).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            patterns = {"contains": f"%{escaped}%", "starts_with": f"{escaped}%", "ends_with": f"%{escaped}"}
-            return f"{name} LIKE ? ESCAPE '\\'", (patterns[operator],)
+            # LIKE ignores case for icontains, GLOB matches case for the other text operators
+            if operator == "icontains":
+                escaped = str(literal).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                return f"{name} LIKE ? ESCAPE '\\'", (f"%{escaped}%",)
+            escaped = re.sub(r"[[*?]", r"[\g<0>]", str(literal))
+            patterns = {"contains": f"*{escaped}*", "starts_with": f"{escaped}*", "ends_with": f"*{escaped}"}
+            return f"{name} GLOB ?", (patterns[operator],)
         if operator == "in":
             if not isinstance(literal, list):
                 raise ValueError("IN filters require a list of values")
