@@ -25,7 +25,7 @@ from .manager import server_only
 from .render import component
 from .store import Store, create_store, load_store, load_store_snapshot, save_store
 
-__version__ = "0.7.0-beta.1"
+__version__ = "0.7.0-beta.2"
 
 __all__ = [
     "component",
