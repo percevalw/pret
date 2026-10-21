@@ -150,11 +150,7 @@ jobs:
         run: |
           yarn install
           # install setuptools < 81 to fix issue with pkg_resources
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
-            uv pip install -e . --group docs --group unreleased-deps "setuptools<81"
-          else
-            uv pip install -e . --group docs "setuptools<81"
-          fi
+          uv pip install -e . --group docs "setuptools<81"
 
       - name: 'Build docs'
         run: |
