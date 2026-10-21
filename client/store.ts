@@ -178,15 +178,13 @@ class StoreController {
           doc.reconcile(initial.state);
           this.bindResources(resources);
         }
-        this.pollTimer = setInterval(() => {
-          if (this.connected) void this.catchUpRemoteChanges().catch(() => {});
-        }, 2000);
       } else {
         const inputs: BrowserResource[] = Object.values(this.resources).map((resource) => resource.offlineRows);
         this.database = await createBrowserDatabase(inputs);
       }
       this.phase = "ready";
       this.notifyHistory();
+      this.startPolling();
       if (getRemoteDataChanges && this.connected) await this.catchUpRemoteChanges();
     })().catch((error) => {
       this.error = errorText(error);
@@ -347,6 +345,21 @@ class StoreController {
     }
     if (op) op.optimistic = undefined;
     this.notifyHistory();
+  }
+
+  // Poll Python for missed commits only while something watches this Store
+  startPolling(): void {
+    if (!this.getRemoteDataChanges || this.pollTimer || this.phase === "loading" || !this.watched) return;
+    this.pollTimer = setInterval(() => {
+      if (!this.watched) {
+        clearInterval(this.pollTimer);
+        this.pollTimer = null;
+      } else if (this.connected) void this.catchUpRemoteChanges().catch(() => {});
+    }, 2000);
+  }
+
+  private get watched(): boolean {
+    return this.listeners.size > 0 || this.doc.observed;
   }
 
   // Poll or respond to a Store notification, changes arriving during an op are fetched after it
@@ -580,6 +593,7 @@ class StoreController {
   getSnapshot = (): HistorySnapshot => this.historySnapshot;
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
+    this.startPolling();
     return () => this.listeners.delete(listener);
   };
 
