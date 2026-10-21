@@ -178,15 +178,20 @@ export class BrowserDatabase {
       }
       return `${column} ${operators[node.operator]} ?`;
     }
-    if (["contains", "starts_with", "ends_with"].includes(node.operator)) {
+    if (["icontains", "contains", "starts_with", "ends_with"].includes(node.operator)) {
       if (![arrow.Type.Utf8, arrow.Type.LargeUtf8].includes(field.type.typeId))
         throw new Error("Text filters require a text column");
       const text = String(node.value);
-      const escaped = text.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+      // LIKE ignores case for icontains, GLOB matches case for the other text operators, as in dataframe_sqlite.py
+      if (node.operator === "icontains") {
+        values.push(`%${text.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`);
+        return `${column} LIKE ? ESCAPE '\\'`;
+      }
+      const escaped = text.replace(/[[*?]/g, "[$&]");
       values.push(
-        node.operator === "contains" ? `%${escaped}%` : node.operator === "starts_with" ? `${escaped}%` : `%${escaped}`
+        node.operator === "contains" ? `*${escaped}*` : node.operator === "starts_with" ? `${escaped}*` : `*${escaped}`
       );
-      return `${column} LIKE ? ESCAPE '\\'`;
+      return `${column} GLOB ?`;
     }
     throw new Error(`Unknown filter operator ${node.operator}`);
   }

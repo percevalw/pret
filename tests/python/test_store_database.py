@@ -218,6 +218,15 @@ def test_full_queries_locations_distinct_and_relations(database):
     assert provider.query({"identities": []})["total_count"] == 0
     with pytest.raises(ValueError):
         provider.query({"sort": [{"column": "missing", "direction": "asc"}]})
+    # Only icontains ignores case, GLOB wildcards in a value are matched literally
+    names = database.add_dataframe(pa.table({"name": ["ABC", "abc", "a*c", "x"]}), "names")
+    for operator, value, expected in [
+        ("icontains", "abc", ["ABC", "abc"]),
+        ("contains", "abc", ["abc"]),
+        ("contains", "*", ["a*c"]),
+    ]:
+        node = {"kind": "predicate", "column": "name", "operator": operator, "value": value}
+        assert names.query({"filter": node})["table"].column("name").to_pylist() == expected
 
 
 @pytest.mark.parametrize("database", [":memory:"], indirect=True)
