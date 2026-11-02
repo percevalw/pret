@@ -4,6 +4,7 @@ Base class and result types for DataFrame storage and source adapters
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Literal, TypedDict
 
@@ -82,6 +83,20 @@ class DataFrameProvider(ABC):
         """
         Return column types, row counts and supported operations for widget configuration
         """
+
+    @property
+    def columns(self) -> list[str]:
+        """
+        Column names, read without awaiting by recipes that pick their join keys before building widgets
+
+        This default reads a synchronous describe, providers that describe asynchronously override it
+        """
+        description = self.describe()
+        if inspect.isawaitable(description):
+            if inspect.iscoroutine(description):
+                description.close()
+            raise NotImplementedError("This provider describes asynchronously, implement columns to list its names")
+        return [column["name"] for column in description["columns"]]
 
     @abstractmethod
     def query(self, options: dict[str, Any] | None = None) -> DataFrameQueryResult | Awaitable[DataFrameQueryResult]:

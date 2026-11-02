@@ -67,6 +67,14 @@ class DefaultColumnsView(DataFrameProvider):
                 table = table.append_column(name, column)
         return table
 
+    @property
+    def columns(self):
+        """
+        Parent columns followed by the added ones, in the order of describe
+        """
+        parent = self.parent.columns
+        return [*parent, *(name for name in self.defaults if name not in parent)]
+
     async def describe(self):
         """
         Include the added columns in the description used to configure widgets
@@ -179,6 +187,13 @@ class DataFrame:
     async def call_provider(self, method, *args):
         value = getattr(self.provider, method)(*args)
         return await value if inspect.isawaitable(value) else value
+
+    @property
+    def columns(self) -> list[str]:
+        """
+        Column names of the table, for example to pick join keys in a recipe before building its widgets
+        """
+        return self.provider.columns
 
     async def describe(self) -> DataFrameDescription:
         """
