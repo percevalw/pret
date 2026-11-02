@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.7.0-beta.3 (2026-11-02)
 
 - `DataFrame.columns` lists the column names of a DataFrame without awaiting `describe()`, e.g. so a Metanno recipe can choose its join keys from the tables it was given. A custom `DataFrameProvider` whose `describe` is async needs a `columns` property, the others get it from `describe`.
 
