@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `DataFrame.columns` lists the column names of a DataFrame without awaiting `describe()`, e.g. so a Metanno recipe can choose its join keys from the tables it was given. A custom `DataFrameProvider` whose `describe` is async needs a `columns` property, the others get it from `describe`.
+
 ## v0.7.0-beta.2 (2026-10-21)
 
 - Store now polls the kernel only while a view or subscriber uses it, to prevent many inactive views to bomb the kernel with useless heath queries

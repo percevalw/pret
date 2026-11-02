@@ -222,6 +222,7 @@ def test_custom_provider_requires_reads_and_defaults_to_read_only():
     provider = ReadOnlyRows()
     frame = DataFrame(provider=provider)
     assert asyncio.run(frame.describe())["row_count"] == 1
+    assert frame.columns == ["id"]
     payload = asyncio.run(frame.query())
     assert ipc.open_stream(payload.buffers[0]).read_all().to_pylist() == [{"id": 42}]
     with pytest.raises(NotImplementedError, match="read only"):
@@ -318,6 +319,7 @@ def test_ibis_source_previews_and_explicit_paging(engine, request):
     frame = DataFrame(source)
     preview = frame.provider
     assert isinstance(preview, IbisDataFrameProvider)
+    assert frame.columns == ["id", "label"]
     preview.row_limit = 2
     assert preview.describe()["row_limit"] == 2
     rows = preview.query()

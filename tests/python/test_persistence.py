@@ -93,6 +93,7 @@ def test_generated_columns_become_persisted_values(tmp_path):
         sync=True,
     )
 
+    assert live["tags"].columns == ["todo_id", "tag_id", "done"]
     description = asyncio.run(live["tags"].describe())
     assert next(column for column in description["columns"] if column["name"] == "tag_id")["source_filter"] is False
     saved = save_store(live, tmp_path / "review.pret")
