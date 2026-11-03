@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.7.0-beta.4 (2026-11-03)
 
 - An Ibis or Spark preview larger than its byte budget keeps the first rows that fit instead of failing, and its query scope reports `limit_reached`, as for a preview cut at its row limit. Paged queries still fail above the budget.
 
