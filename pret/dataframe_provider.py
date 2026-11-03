@@ -39,6 +39,7 @@ class DataFrameQueryResult(TypedDict):
     revision: NotRequired[int]
     offset: NotRequired[int]
     positions: NotRequired[list[int | None]]
+    limit_reached: NotRequired[bool]
 
 
 class EditOperation(TypedDict, total=False):

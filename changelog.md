@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- An Ibis or Spark preview larger than its byte budget keeps the first rows that fit instead of failing, and its query scope reports `limit_reached`, as for a preview cut at its row limit. Paged queries still fail above the budget.
+
 ## v0.7.0-beta.3 (2026-11-02)
 
 - `DataFrame.columns` lists the column names of a DataFrame without awaiting `describe()`, e.g. so a Metanno recipe can choose its join keys from the tables it was given. A custom `DataFrameProvider` whose `describe` is async needs a `columns` property, the others get it from `describe`.
