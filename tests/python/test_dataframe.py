@@ -11,6 +11,7 @@ import pyarrow.ipc as ipc
 import pytest
 
 from pret import DataFrame, DataFrameProvider, apply_ibis_filter, create_store, save_store
+from pret.arrow import calculate_arrow_size
 from pret.dataframe import IbisDataFrameProvider
 from pret.manager import get_manager
 
@@ -358,6 +359,30 @@ def test_ibis_source_previews_and_explicit_paging(engine, request):
         del exact, frame, preview, provider
         gc.collect()
         assert backend.catalog.listTables() == views
+
+
+def test_ibis_preview_keeps_the_rows_that_fit_its_byte_budget(request):
+    """
+    A preview larger than max_bytes keeps its first rows and reports its limit as reached, a page still fails
+    """
+    backend = ibis.sqlite.connect(":memory:")
+    request.addfinalizer(backend.disconnect)
+    backend.raw_sql("CREATE TABLE data(id INTEGER, label TEXT)")
+    backend.raw_sql(
+        "INSERT INTO data WITH RECURSIVE n(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM n WHERE id < 100) "
+        "SELECT id, printf('%.1000c', 'x') FROM n"
+    )
+    preview = IbisDataFrameProvider(backend.table("data"), row_limit=100, max_bytes=30_000)
+    result = preview.query()
+    table = result["table"]
+    assert result["limit_reached"] is True
+    assert table["id"].to_pylist() == list(range(1, table.num_rows + 1))
+    complete = IbisDataFrameProvider(backend.table("data"), row_limit=100).query()["table"]
+    assert calculate_arrow_size(table) <= 30_000 < calculate_arrow_size(complete.slice(0, table.num_rows + 1))
+    assert "limit_reached" not in preview.query({"limit": 10})
+    paged = IbisDataFrameProvider(backend.table("data"), row_limit=100, max_bytes=30_000, paging=True)
+    with pytest.raises(ValueError, match="byte limit"):
+        paged.query({"limit": 100})
 
 
 def test_filters_run_on_sqlite(request):

@@ -318,8 +318,21 @@ class IbisDataFrameProvider(DataFrameProvider):
             result["table"] = result["table"].append_column(
                 "__pret_row_id", pa.array(range(offset, offset + result["table"].num_rows), type=pa.int64())
             )
-        if calculate_arrow_size(result["table"]) > self.max_bytes:
-            raise ValueError("Source query page exceeds the byte limit, request fewer rows or columns")
+        table = result["table"]
+        if calculate_arrow_size(table) > self.max_bytes:
+            if paging:
+                raise ValueError("Source query page exceeds the byte limit, request fewer rows or columns")
+            # A preview keeps its first rows up to max_bytes, found by bisection on the row count, and widgets show
+            # its limit as reached
+            low, high = 0, table.num_rows - 1
+            while low < high:
+                middle = (low + high + 1) // 2
+                if calculate_arrow_size(table.slice(0, middle)) <= self.max_bytes:
+                    low = middle
+                else:
+                    high = middle - 1
+            result["table"] = table.slice(0, low)
+            result["limit_reached"] = True
         return result
 
     def materialize(self, bounds=None):

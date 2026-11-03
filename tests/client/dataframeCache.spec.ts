@@ -163,10 +163,13 @@ test("limited tables expose the loaded rows and replace them on query", async ()
         0,
         options.limit
       );
-      return { bytes: encodeRows(rows), total_count: null, row_count: rows.length, revision: 0 };
+      // A filter on two IDs stands for a source reply cut at its byte budget
+      const limit_reached = options.filter?.value.length === 2;
+      return { bytes: encodeRows(rows), total_count: null, row_count: rows.length, revision: 0, limit_reached };
     },
   });
   await dataframe.ensureScope();
+  assert.equal(dataframe.scope.limit_reached, true);
   const table = await dataframe.createView(null, "null", "id");
   const form = await dataframe.createView(null, "null", "id");
   const signal = new AbortController().signal;
@@ -181,6 +184,8 @@ test("limited tables expose the loaded rows and replace them on query", async ()
   const filtered = await dataframe.createView(null, "null", "id");
   assert.equal(filtered.rowCount, 1);
   assert.equal((await filtered.getRows(0, 500, signal))[0].id, 999);
+  assert.equal(dataframe.scope.limit_reached, false);
+  assert.equal((await dataframe.fetchScope({ kind: "predicate", value: [1, 2] })).limit_reached, true);
 });
 
 // A loader of related tables can set a scope while useDataFrameView loads the whole table

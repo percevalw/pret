@@ -37,6 +37,8 @@ export type QueryResult = {
   revision: number;
   offset?: number;
   positions?: Array<number | null>;
+  // A source preview cut at its byte budget before its row limit
+  limit_reached?: boolean;
 };
 
 // Store commits group these row edits and return the identities assigned to insertions
@@ -90,6 +92,8 @@ export type QueryScope = {
   rows?: DataFrameRow[] | null;
   bytes?: Uint8Array;
   offset?: number;
+  // The preview holds as many rows as its row limit or its byte budget allows, more rows may match its filter
+  limit_reached?: boolean;
 };
 export type DataFrameRow = Record<string, any>;
 // Widgets can request pages or identities without depending on a particular grid component
@@ -259,7 +263,8 @@ export class ClientDataFrame implements DataFrameProvider {
     const result = await this.query({ filter, sort, offset, limit: loaded ? limit ?? 500 : 0 });
     const rows = loaded ? this.decodeRows(result.bytes) : null;
     return { filter, row_count: limit != null ? rows.length : result.total_count!,
-      revision: result.revision, rows, bytes: loaded ? result.bytes : undefined, offset };
+      revision: result.revision, rows, bytes: loaded ? result.bytes : undefined, offset,
+      limit_reached: limit != null && (Boolean(result.limit_reached) || rows.length === limit) };
   }
 
   // Show a scope in every widget of this DataFrame, their views are rebuilt and the loading status is cleared
