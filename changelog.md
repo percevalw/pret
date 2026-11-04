@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Filters on a decimal column keep their values exact, so the 19 digit IDs of a `DECIMAL(38, 0)` column no longer fail on DuckDB with `Could not cast value ... to DECIMAL(18,3)`.
+
 ## v0.7.0-beta.4 (2026-11-03)
 
 - An Ibis or Spark preview larger than its byte budget keeps the first rows that fit instead of failing, and its query scope reports `limit_reached`, as for a preview cut at its row limit. Paged queries still fail above the budget.
