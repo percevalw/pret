@@ -385,6 +385,31 @@ def test_ibis_preview_keeps_the_rows_that_fit_its_byte_budget(request):
         paged.query({"limit": 100})
 
 
+def test_decimal_filters_stay_exact(request):
+    """
+    Keep the IDs of a wide decimal column, as long as 19 digits, exact in eq and in filters
+    """
+    pytest.importorskip("duckdb")
+    backend = ibis.duckdb.connect()
+    request.addfinalizer(backend.disconnect)
+    backend.raw_sql("CREATE TABLE data(id DECIMAL(38, 0))")
+    backend.raw_sql("INSERT INTO data VALUES (1234567890123456789), (1234567890123456788), (42)")
+    table = backend.table("data")
+    for operator, value in [("in", ["1234567890123456789", "42"]), ("eq", "1234567890123456789")]:
+        node = {"kind": "predicate", "column": "id", "operator": operator, "value": value}
+        rows = apply_ibis_filter(table, node).to_pyarrow()["id"].to_pylist()
+        assert sorted(int(row) for row in rows) == sorted(
+            int(item) for item in ([value] if operator == "eq" else value)
+        )
+    backend.raw_sql("CREATE TABLE amounts(amount DECIMAL(10, 2))")
+    backend.raw_sql("INSERT INTO amounts VALUES (1.25), (1.26), (2.50)")
+    amounts = backend.table("amounts")
+    node = {"kind": "predicate", "column": "amount", "operator": "gt", "value": "1.255"}
+    assert apply_ibis_filter(amounts, node).to_pyarrow().num_rows == 2
+    with pytest.raises(ValueError, match="must be numeric"):
+        apply_ibis_filter(amounts, {**node, "value": "NaN"})
+
+
 def test_filters_run_on_sqlite(request):
     """
     Combined, null, date, large integer and text filters select the expected SQLite rows, only icontains ignores case

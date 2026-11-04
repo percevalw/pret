@@ -68,9 +68,12 @@ def coerce_ibis_literal(dtype, value, operator):
         if not isinstance(value, (int, float, str)) or isinstance(value, bool):
             raise ValueError("decimal filter value must be numeric")
         try:
-            return Decimal(str(value))
+            number = Decimal(str(value))
         except InvalidOperation as exc:
             raise ValueError("decimal filter value must be numeric") from exc
+        if not number.is_finite():
+            raise ValueError("decimal filter value must be numeric")
+        return number
     if dtype.is_date():
         if not isinstance(value, str):
             raise ValueError("date filter value must use ISO format")
@@ -139,6 +142,15 @@ def compile_predicate(expression, node):
         if operator == "in" and not isinstance(value, list):
             raise ValueError("Source in filter value must be a list")
         value = coerce_ibis_literal(column.type(), value, operator)
+        if column.type().is_decimal():
+            import ibis
+
+            # The default precision of a backend is too small for 19 digit IDs, and the column type would refuse a
+            # bound with more decimals than the column, so we use the widest precision of the backends
+            numbers = value if operator == "in" else [value]
+            scale = max(0, column.type().scale or 0, *(-number.as_tuple().exponent for number in numbers))
+            literals = [ibis.literal(number, type=f"decimal(38, {scale})") for number in numbers]
+            value = literals if operator == "in" else literals[0]
     return operations[operator]()
 
 
