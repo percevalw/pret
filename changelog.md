@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.7.0-beta.5 (2026-11-04)
 
 - Filters on a decimal column keep their values exact, so the 19 digit IDs of a `DECIMAL(38, 0)` column no longer fail on DuckDB with `Could not cast value ... to DECIMAL(18,3)`.
 
