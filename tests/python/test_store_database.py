@@ -215,6 +215,15 @@ def test_full_queries_locations_distinct_and_relations(database):
         "filter": {"kind": "predicate", "column": "selected", "operator": "eq", "value": True},
     }
     assert provider.query({"filter": relation})["table"].column("key").to_pylist() == [901, 999]
+    # An int64 column and a decimal one without fraction relate both ways, eg the note_id of studies and notes
+    note_ids = pa.array([decimal.Decimal(901), decimal.Decimal(950), decimal.Decimal(-3)], pa.decimal128(38, 0))
+    notes = database.add_dataframe(pa.table({"note_id": note_ids}), "notes")
+    notes_filter = {"kind": "predicate", "column": "note_id", "operator": "lt", "value": "951"}
+    relation = {**relation, "resource_id": notes.resource_id, "parent_column": "note_id", "filter": notes_filter}
+    assert provider.query({"filter": relation})["table"].column("key").to_pylist() == [901, 950]
+    relation = {**relation, "column": "note_id", "resource_id": parent.resource_id, "parent_column": "key"}
+    relation["filter"] = {"kind": "predicate", "column": "selected", "operator": "eq", "value": True}
+    assert notes.query({"filter": relation})["table"].column("note_id").to_pylist() == [decimal.Decimal(901)]
     assert provider.query({"identities": []})["total_count"] == 0
     with pytest.raises(ValueError):
         provider.query({"sort": [{"column": "missing", "direction": "asc"}]})

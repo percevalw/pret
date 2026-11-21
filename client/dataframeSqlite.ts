@@ -16,6 +16,11 @@ import {
 export const INTERNAL_ROW_ID = "__pret_row_id";
 const identity = INTERNAL_ROW_ID;
 const quote = (name: string) => '"' + name.replace(/"/g, '""') + '"';
+// Type of a column for the relation filters, integers of any width and decimals without fraction being one, eg the
+// int64 note_id of a table and the decimal(38, 0) one of another, as SQLite compares an INTEGER with the text of a
+// decimal as numbers, related_type in Python
+const relatedType = (type: arrow.DataType) =>
+  arrow.DataType.isInt(type) || (arrow.DataType.isDecimal(type) && type.scale === 0) ? "integer" : String(type);
 let sqlitePromise: Promise<any>;
 
 export type BrowserResource = {
@@ -144,7 +149,7 @@ export class BrowserDatabase {
     const column = quote(field.name);
     if (node.kind === "relation") {
       const parent = this.resource(node.resource_id);
-      if (String(field.type) !== String(this.field(parent, node.parent_column).type))
+      if (relatedType(field.type) !== relatedType(this.field(parent, node.parent_column).type))
         throw new Error("Related columns must have matching Arrow types");
       return `${column} IN (SELECT ${quote(node.parent_column)} FROM ${quote(parent.table)} WHERE ${this.predicate(
         parent,

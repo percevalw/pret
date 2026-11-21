@@ -86,6 +86,17 @@ def numeric_key(value):
     return "0" + key.translate(str.maketrans("0123456789", "9876543210")) if value.startswith("-") else "1" + key
 
 
+def related_type(arrow_type):
+    """
+    Type of a column for the relation filters, integers of any width and decimals without fraction being one, eg the
+    int64 note_id of a table and the decimal(38, 0) one of another, as SQLite compares an INTEGER with the text of a
+    decimal as numbers
+    """
+    if pa.types.is_integer(arrow_type) or (pa.types.is_decimal(arrow_type) and arrow_type.scale == 0):
+        return "integer"
+    return arrow_type
+
+
 def query_column(name, arrow_type):
     """
     Build the comparison expression used by DataFrame filters and ordering
@@ -391,7 +402,7 @@ class SQLiteDataFrameProvider(DataFrameProvider):
             parent_column = node["parent_column"]
             if parent_column not in parent.schema.names:
                 raise ValueError(f"Unknown related column {parent_column}")
-            if fields[column].type != parent.schema.field(parent_column).type:
+            if related_type(fields[column].type) != related_type(parent.schema.field(parent_column).type):
                 raise ValueError("Related columns must have matching Arrow types")
             sql, values = parent.compile_filter(node["filter"])
             return (

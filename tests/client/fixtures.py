@@ -25,6 +25,8 @@ table = pa.table(
             [Decimal("999999999999999999999999999999999999.99"), Decimal("-1.23")],
             type=pa.decimal128(38, 2),
         ),
+        # Identifiers stored as decimals, eg the note_id of an OMOP export, related to the integer ids of docs
+        "identifier": pa.array([Decimal(901), Decimal(5)], type=pa.decimal128(38, 0)),
         "nested": pa.array(
             [[{"instant": instant, "binary": bytes([0, 255, 128]), "missing": None}], None],
             type=nested,

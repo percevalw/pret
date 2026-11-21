@@ -68,6 +68,14 @@ export async function runDataFrameTests(typedBytes: number[]) {
       relation.total_count === 100 && decodeDataFrameRows(relation.bytes)[0].id === 901,
       "relation filtering stays in the Store database"
     );
+    // Integer ids and decimal ids without fraction relate both ways
+    const byDecimal = db.query("docs", {
+      filter: { kind: "relation", resource_id: "typed", column: "id", parent_column: "identifier", filter: null },
+    });
+    const byInteger = db.query("typed", {
+      filter: { kind: "relation", resource_id: "docs", column: "identifier", parent_column: "id", filter },
+    });
+    check(byDecimal.total_count === 2 && byInteger.total_count === 1, "integer and decimal ids relate");
 
     edit("docs", { kind: "update", row_identity: 1, values: { label: "michael", score: 0.8 } });
     check(row().label === "michael" && row().score === 0.8, "released edits are kept");
