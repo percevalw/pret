@@ -316,7 +316,7 @@ export class ClientDataFrame implements DataFrameProvider {
     }
     if (generation !== this.viewVersion) return null;
     if (scope.revision < this.revision) return null;
-    if (scope.revision > this.revision) {
+    if (scope.revision > this.revision && !this.subscribeChanges) {
       this.revision = scope.revision;
       this.invalidateViews();
       return null;
@@ -348,6 +348,11 @@ export class ClientDataFrame implements DataFrameProvider {
       if (result.revision < this.revision)
         result = await this.query({ filter, sort, include_count: false, ...options });
       if (!current(signal)) return null;
+      // Right after an edit, the query results can come back with the new version number of the Store (a newer
+      // revision than this.revision) before the page learns which columns the edit changed. For a Store table, we
+      // keep these rows since acceptChanges receives these columns next and drops only the views filtered or sorted
+      // by one of them
+      if (result.revision > this.revision && this.subscribeChanges) return result;
       if (result.revision !== this.revision) {
         this.revision = Math.max(this.revision, result.revision);
         this.invalidateViews();

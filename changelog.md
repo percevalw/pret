@@ -3,6 +3,7 @@
 ## Unreleased
 
 - A relation between Store tables accepts integer columns of any width and decimal columns without fraction on either side, so an `int64` `note_id` of one table now relates to the `DECIMAL(38, 0)` `note_id` of an OMOP export instead of failing with `Related columns must have matching Arrow types`.
+- After an edit in a column of a Store table (e.g. via a Metanno Table component or a form), the page now reloads only the queries that are filtered or sorted by the edited column. For instance, ticking a checkbox only reloads a query if this query is filtered or sorted by the column of this checkbox. Before, every edit reloaded all the queries of that table in paged mode, because the query results came back with the new version number of the Store before the page learned which columns the edit had changed, so the page thought all the rows it showed were outdated.
 
 ## v0.7.0-beta.5 (2026-11-04)
 
