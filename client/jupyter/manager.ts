@@ -507,7 +507,13 @@ export default class PretJupyterHandler {
     }
     this.comm = comm;
     this.comm.onMsg = (msg) => {
-      if (this.comm === comm && !this.disposed) return this.handleCommMessage(msg);
+      if (this.disposed) return;
+      // When the connection stops (ex the computer goes to sleep), the comm attribute is cleared by confirmCommAlive,
+      // but once the connection is back, Jupyter sends to this comm the messages that were waiting (ex the reply to
+      // a Store edit made by the page), so we reuse this comm to get them. We don't reuse it once a new comm has
+      // replaced it, and stopConnection removes this handler
+      if (this.comm === null) this.comm = comm;
+      if (this.comm === comm) return this.handleCommMessage(msg);
     };
     console.info("PRET: Attached comm", {
       target: this.commTargetName,
