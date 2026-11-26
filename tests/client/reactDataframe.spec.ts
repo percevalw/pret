@@ -3,7 +3,8 @@ import * as arrow from "apache-arrow";
 import { loadDataFrame } from "./dataframeNode";
 const { test } = require(process.env.PRET_TESTING_HELPER);
 
-// React renders that are discarded or replaced must not leave DataFrame subscriptions behind
+// React renders that are discarded or replaced must not leave DataFrame subscriptions behind, and a new filter
+// reports its loading while the previous rows stay shown
 test("shares one client and polls only while widgets are mounted", async () => {
   const { JSDOM } = require("jsdom");
   const dom = new JSDOM('<!doctype html><div id="root"></div>', {
@@ -56,8 +57,8 @@ test("shares one client and polls only while widgets are mounted", async () => {
     assert.equal(runtimeModule.createClientDataFrame({ resource_id: "documents", binding_id: "view" }), dataframe);
     let widgetState;
     // Capture the active row source while React mounts and replaces the resource
-    function Widget({ source = dataframe }) {
-      widgetState = useDataFrameView(source, null, "id");
+    function Widget({ source = dataframe, filter = null }) {
+      widgetState = useDataFrameView(source, filter, "id");
       return null;
     }
     const root = document.getElementById("root");
@@ -81,6 +82,18 @@ test("shares one client and polls only while widgets are mounted", async () => {
     });
     assert.equal(timers.size, 1);
     assert.ok(widgetState.rowSource);
+    const previous = widgetState.rowSource;
+    const filter = { kind: "predicate", column: "id", operator: "in", value: [1] };
+    act(() => {
+      ReactDOM.render(React.createElement(Widget, { filter }), root);
+    });
+    assert.equal(widgetState.loading, "Loading data");
+    assert.equal(widgetState.previousRowSource, previous);
+    await act(async () => {
+      await new Promise(setImmediate);
+    });
+    assert.equal(widgetState.loading, null);
+    assert.notEqual(widgetState.rowSource, previous);
     await act(async () => {
       ReactDOM.render(React.createElement(Widget, { source: null }), root);
       await new Promise(setImmediate);

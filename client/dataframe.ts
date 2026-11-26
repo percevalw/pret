@@ -716,12 +716,15 @@ export function useDataFrameView(
       disposed = true;
     };
   }, [dataframe, dataframe?.viewVersion, dataframe?.description, filterKey, primaryKey, sortKey]);
+  // The view loads until it shows rows of the current filter and sort, eg the documents of a newly selected patient
+  // while the previous ones stay shown, but not when it queries the same rows again after an edit
+  const shown = loaded?.dataframe === dataframe ? loaded : null;
   return {
-    rowSource: loaded?.dataframe === dataframe && loaded?.key === key && !loaded.source.disposed ? loaded.source : null,
-    previousRowSource: loaded?.dataframe === dataframe ? loaded.source : null,
+    rowSource: shown?.key === key && !shown.source.disposed ? shown.source : null,
+    previousRowSource: shown?.source ?? null,
     contentVersion: dataframe?.contentVersion ?? 0,
     description: dataframe?.description ?? null,
-    loading: dataframe?.loading ?? (dataframe && !loaded && !dataframe.error ? "Loading data" : null),
+    loading: dataframe?.loading ?? (dataframe && shown?.key !== key && !dataframe.error ? "Loading data" : null),
     error: dataframe?.error ?? null,
   };
 }
