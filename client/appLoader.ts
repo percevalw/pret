@@ -1,4 +1,5 @@
 import React from "react";
+import ReactDOM from "react-dom";
 import { addExtension, Decoder } from "./cborDecoder";
 import * as storeLib from "./store";
 import { createOfflineDataFrame, createClientDataFrame, useDataFrameView } from "./dataframe";
@@ -11,6 +12,9 @@ import * as pyRuntime from "./org.transcrypt.__runtime__";
 (window as any).pret_modules.components ??= new Map<string, Record<string, unknown>>();
 (window as any).pret_modules.components.set("react", React);
 (window as any).pret_modules.components.set("pret", routing);
+// pret.react.Portal renders its children into the DOM node given as `container`, or nothing while it is null
+const Portal = ({ container, children }) => (container ? ReactDOM.createPortal(children, container) : null);
+(window as any).pret_modules.components.set("react-dom", { ...ReactDOM, Portal });
 
 // Put the global variables in the window object to allow pret stub components and stub functions to access them
 (window as any).React = React;

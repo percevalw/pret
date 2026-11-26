@@ -12,6 +12,7 @@ else:
 __version__ = "0.1.0"
 
 make_stub_js_module("React", "pret", "react", __version__, __name__)
+make_stub_js_module("ReactDOM", "pret", "react-dom", __version__, __name__)
 
 props_mapping = {
     "href_lang": "hrefLang",
@@ -307,6 +308,15 @@ def Fragment(*children): ...
 
 @stub_component(js.React.Suspense, props_mapping)
 def Suspense(*children, fallback: Any): ...
+
+
+@stub_component(js.ReactDOM.Portal, props_mapping)
+def Portal(*children, container: Any):
+    """
+    Render the children into the `container` DOM node rather than inside the parent of the Portal, eg into a
+    toolbar of the page that the app does not render. The children keep the state, the context and the events
+    of the component that renders the Portal, and nothing shows while `container` is None
+    """
 
 
 @stub_component("a", props_mapping)
