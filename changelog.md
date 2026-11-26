@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `useDataFrameView` now reports "Loading data" while it queries the rows of a new filter or sort, for instance the documents of a newly selected patient, and keeps showing the previous rows meanwhile. Before, it only reported the first load of a view, so a widget showed the rows of the previous patient for a few seconds without any loading status.
+
 ## v0.7.0-beta.6 (2026-11-26)
 
 - A relation between Store tables accepts integer columns of any width and decimal columns without fraction on either side, so an `int64` `note_id` of one table now relates to the `DECIMAL(38, 0)` `note_id` of an OMOP export instead of failing with `Related columns must have matching Arrow types`.
