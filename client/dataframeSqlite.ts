@@ -184,19 +184,28 @@ export class BrowserDatabase {
       return `${column} ${operators[node.operator]} ?`;
     }
     if (["icontains", "contains", "starts_with", "ends_with"].includes(node.operator)) {
-      if (![arrow.Type.Utf8, arrow.Type.LargeUtf8].includes(field.type.typeId))
-        throw new Error("Text filters require a text column");
+      // A list of texts, stored as JSON, matches when one of its items does, as in dataframe_sqlite.py
+      const textTypes = [arrow.Type.Utf8, arrow.Type.LargeUtf8];
+      const isList =
+        [arrow.Type.List, arrow.Type.FixedSizeList].includes(field.type.typeId) &&
+        textTypes.includes(field.type.children[0].type.typeId);
+      if (!textTypes.includes(field.type.typeId) && !isList)
+        throw new Error("Text filters require a text column or a list of texts");
+      const target = isList ? "value" : column;
       const text = String(node.value);
+      let sql: string;
       // LIKE ignores case for icontains, GLOB matches case for the other text operators, as in dataframe_sqlite.py
       if (node.operator === "icontains") {
         values.push(`%${text.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`);
-        return `${column} LIKE ? ESCAPE '\\'`;
+        sql = `${target} LIKE ? ESCAPE '\\'`;
+      } else {
+        const escaped = text.replace(/[[*?]/g, "[$&]");
+        values.push(
+          node.operator === "contains" ? `*${escaped}*` : node.operator === "starts_with" ? `${escaped}*` : `*${escaped}`
+        );
+        sql = `${target} GLOB ?`;
       }
-      const escaped = text.replace(/[[*?]/g, "[$&]");
-      values.push(
-        node.operator === "contains" ? `*${escaped}*` : node.operator === "starts_with" ? `${escaped}*` : `*${escaped}`
-      );
-      return `${column} GLOB ?`;
+      return isList ? `EXISTS (SELECT 1 FROM json_each(${column}) WHERE ${sql})` : sql;
     }
     throw new Error(`Unknown filter operator ${node.operator}`);
   }

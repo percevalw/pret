@@ -236,6 +236,16 @@ def test_full_queries_locations_distinct_and_relations(database):
     ]:
         node = {"kind": "predicate", "column": "name", "operator": operator, "value": value}
         assert names.query({"filter": node})["table"].column("name").to_pylist() == expected
+    # A list of strings matches a text filter when one of its items does
+    labels = pa.table({"id": [1, 2, 3, 4], "labels": [["fever", "cough"], [], None, ["Fever"]]})
+    labels = database.add_dataframe(labels, "labels")
+    for operator, value, expected in [
+        ("icontains", "fev", [1, 4]),
+        ("contains", "ough", [1]),
+        ("starts_with", "F", [4]),
+    ]:
+        node = {"kind": "predicate", "column": "labels", "operator": operator, "value": value}
+        assert labels.query({"filter": node})["table"].column("id").to_pylist() == expected
 
 
 @pytest.mark.parametrize("database", [":memory:"], indirect=True)

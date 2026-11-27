@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Text filters (`icontains`, `contains`, `starts_with` and `ends_with`) on a list of strings of a Store table keep the rows where one of the strings matches, for instance `fev` keeps `["fever", "cough"]`. Before, they failed with `Text filters require a string column`.
 - `useDataFrameView` now reports "Loading data" while it queries the rows of a new filter or sort, for instance the documents of a newly selected patient, and keeps showing the previous rows meanwhile. Before, it only reported the first load of a view, so a widget showed the rows of the previous patient for a few seconds without any loading status.
 
 ## v0.7.0-beta.6 (2026-11-26)
