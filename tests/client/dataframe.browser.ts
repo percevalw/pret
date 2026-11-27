@@ -21,9 +21,16 @@ export async function runDataFrameTests(typedBytes: number[]) {
       new arrow.Float64()
     ),
   });
+  const labels = new arrow.Table({
+    labels: arrow.vectorFromArray(
+      [["fever", "cough"], [], null, ["Fever"]],
+      new arrow.List(new arrow.Field("item", new arrow.Utf8()))
+    ),
+  });
   const resources = [
     { resource_id: "docs", bytes: arrow.tableToIPC(table) },
     { resource_id: "typed", bytes: new Uint8Array(typedBytes) },
+    { resource_id: "labels", bytes: arrow.tableToIPC(labels) },
   ];
   const db = await createBrowserDatabase(resources);
   // Browser only Stores keep their edits, connected full copies roll them back once Python replies
@@ -125,6 +132,12 @@ export async function runDataFrameTests(typedBytes: number[]) {
       db.query("typed", { filter: { kind: "predicate", column: "amount", operator: "gt", value: "0.00" } })
         .total_count === 1,
       "decimal filters use exact numeric order"
+    );
+    const matching = (operator, value) =>
+      db.query("labels", { filter: { kind: "predicate", column: "labels", operator, value } }).total_count;
+    check(
+      matching("icontains", "fev") === 2 && matching("contains", "ough") === 1 && matching("starts_with", "F") === 1,
+      "a list of texts matches a text filter when one of its items does"
     );
     check(
       decodeDataFrameRows(db.query("typed", { sort: [{ column: "unsigned", direction: "asc" }] }).bytes)[0].unsigned ===
