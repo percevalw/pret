@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.0.0 (2026-11-27)
 
 - A view of `useDataFrameView` whose query fails for its filter or sort, for instance a filter that the source rejects, now reports the error as its own `queryError`. Before, the error became the error of the whole DataFrame, so every widget of that DataFrame showed it until another query cleared it.
 - Text filters (`icontains`, `contains`, `starts_with` and `ends_with`) on a list of strings of a Store table keep the rows where one of the strings matches, for instance `fev` keeps `["fever", "cough"]`. Before, they failed with `Text filters require a string column`.
