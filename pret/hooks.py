@@ -343,7 +343,8 @@ def use_dataframe_view(dataframe, filter=None, primary_key=None, sort=None, load
     The view shows the scope of the DataFrame, the rows shared by all its widgets in the page,
     filtered and sorted for this component. When no scope is set, the hook loads the whole table.
     This hook exposes a rowSource for loaded data, the preceding rowSource while the view changes,
-    and the DataFrame description, loading message, and error. It releases its view when the
+    and the DataFrame description, loading message, and error. Its queryError is the error of the
+    query of this view only, eg a filter the source rejects. It releases its view when the
     component unmounts. Pass arguments by position, the browser function takes no keywords.
 
     To show related tables together, such as notes and their entities, pass load=False and set

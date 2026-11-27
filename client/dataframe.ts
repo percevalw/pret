@@ -670,6 +670,7 @@ export function useDataFrameView(
 ) {
   const [, render] = useState(0);
   const [loaded, setLoaded] = useState<{ dataframe: ClientDataFrame; key: string; source: DataFrameView } | null>(null);
+  const [failed, setFailed] = useState<{ dataframe: ClientDataFrame; key: string; error: string } | null>(null);
   const current = useRef<DataFrameView | null>(null);
   const filterKey = JSON.stringify(filter);
   const sortKey = JSON.stringify(sort);
@@ -710,7 +711,8 @@ export function useDataFrameView(
         setLoaded({ dataframe, key, source: view });
       })
       .catch((reason) => {
-        if (!disposed) dataframe.setStatus(null, errorText(reason));
+        // A query that fails for this filter or sort, eg a filter the source rejects, is reported by this view only
+        if (!disposed) setFailed({ dataframe, key, error: errorText(reason) });
       });
     return () => {
       disposed = true;
@@ -719,12 +721,18 @@ export function useDataFrameView(
   // The view loads until it shows rows of the current filter and sort, eg the documents of a newly selected patient
   // while the previous ones stay shown, but not when it queries the same rows again after an edit
   const shown = loaded?.dataframe === dataframe ? loaded : null;
+  const queryError = failed?.dataframe === dataframe && failed.key === key ? failed.error : null;
   return {
     rowSource: shown?.key === key && !shown.source.disposed ? shown.source : null,
     previousRowSource: shown?.source ?? null,
     contentVersion: dataframe?.contentVersion ?? 0,
     description: dataframe?.description ?? null,
-    loading: dataframe?.loading ?? (dataframe && shown?.key !== key && !dataframe.error ? "Loading data" : null),
+    loading:
+      dataframe?.loading ??
+      (dataframe && shown?.key !== key && !dataframe.error && !queryError ? "Loading data" : null),
+    // `error` is shared by the widgets of the DataFrame, eg a source that cannot be read, `queryError` is the error
+    // of the query of this view
     error: dataframe?.error ?? null,
+    queryError,
   };
 }

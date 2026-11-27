@@ -46,13 +46,16 @@ test("shares one client and polls only while widgets are mounted", async () => {
         capabilities: { changes: true },
         revision: 0,
       }),
-      query: async () => ({
-        bytes: arrow.tableToIPC(arrow.tableFromArrays({ id: [] })),
-        row_count: 0,
-        total_count: 0,
-        revision: 0,
-        offset: 0,
-      }),
+      query: async (options) => {
+        if (options?.filter?.value?.[0] === "rejected") throw new Error("Text filters require a string column");
+        return {
+          bytes: arrow.tableToIPC(arrow.tableFromArrays({ id: [] })),
+          row_count: 0,
+          total_count: 0,
+          revision: 0,
+          offset: 0,
+        };
+      },
     });
     assert.equal(runtimeModule.createClientDataFrame({ resource_id: "documents", binding_id: "view" }), dataframe);
     let widgetState;
@@ -94,6 +97,17 @@ test("shares one client and polls only while widgets are mounted", async () => {
     });
     assert.equal(widgetState.loading, null);
     assert.notEqual(widgetState.rowSource, previous);
+    // A filter the source rejects is reported by this view only, not by the other widgets of the DataFrame
+    act(() => {
+      ReactDOM.render(React.createElement(Widget, { filter: { ...filter, value: ["rejected"] } }), root);
+    });
+    await act(async () => {
+      await new Promise(setImmediate);
+    });
+    assert.deepEqual(
+      [widgetState.queryError, widgetState.error, widgetState.loading],
+      ["Text filters require a string column", null, null]
+    );
     await act(async () => {
       ReactDOM.render(React.createElement(Widget, { source: null }), root);
       await new Promise(setImmediate);
